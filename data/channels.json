@@ -1,0 +1,80 @@
+[
+  {
+    "id": "general",
+    "name": "general",
+    "messages": [
+      {
+        "id": "1",
+        "text": "Welcome to the team chat!",
+        "sender": "Admin",
+        "timestamp": "2026-07-20T08:00:00.000Z"
+      },
+      {
+        "id": "1784536929892",
+        "text": "admin",
+        "sender": "Admin",
+        "timestamp": "2026-07-20T08:42:09.892Z"
+      },
+      {
+        "id": "1784536929907",
+        "text": "admin",
+        "sender": "Admin",
+        "timestamp": "2026-07-20T08:42:09.907Z"
+      },
+      {
+        "id": "1784536944100",
+        "text": "how are you",
+        "sender": "Abdul Ahad",
+        "timestamp": "2026-07-20T08:42:24.100Z"
+      },
+      {
+        "id": "1784556456342",
+        "text": "ha bhai abdul hadi ki web dikhao senior deleoper aj ka]",
+        "sender": "Abdul Ahad",
+        "timestamp": "2026-07-20T14:07:36.342Z"
+      },
+      {
+        "id": "1784556456377",
+        "text": "ha bhai abdul hadi ki web dikhao senior deleoper aj ka",
+        "sender": "Abdul Ahad",
+        "timestamp": "2026-07-20T14:07:36.377Z"
+      },
+      {
+        "id": "1784556456435",
+        "text": "ha bhai abdul hadi ki web dikhao senior deleoper aj ka]",
+        "sender": "Abdul Ahad",
+        "timestamp": "2026-07-20T14:07:36.435Z"
+      },
+      {
+        "id": "1784556456455",
+        "text": "ha bhai abdul hadi ki web dikhao senior deleoper aj ka]",
+        "sender": "Abdul Ahad",
+        "timestamp": "2026-07-20T14:07:36.455Z"
+      },
+      {
+        "id": "1784556494243",
+        "text": "Hello",
+        "sender": "Admin",
+        "timestamp": "2026-07-20T14:08:14.243Z"
+      }
+    ]
+  },
+  {
+    "id": "random",
+    "name": "random",
+    "messages": []
+  },
+  {
+    "id": "1784536970733",
+    "name": "workers",
+    "messages": [
+      {
+        "id": "1784536980460",
+        "text": "only workser chat",
+        "sender": "Abdul Ahad",
+        "timestamp": "2026-07-20T08:43:00.460Z"
+      }
+    ],
+    "createdAt": "2026-07-20T08:42:50.733Z"
+  }
+]
