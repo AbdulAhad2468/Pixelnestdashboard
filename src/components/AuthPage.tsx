@@ -9,11 +9,13 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const { login, signup } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSuccess("");
 
     if (isLogin) {
       const success = await login(email, password);
@@ -28,6 +30,11 @@ export default function AuthPage() {
       const success = await signup(email, password, name);
       if (!success) {
         setError("Email already exists");
+      } else {
+        setSuccess("Account created! Please wait for an admin to approve your access to chat, DMs, and Sprint Board.");
+        setEmail("");
+        setPassword("");
+        setName("");
       }
     }
   };
@@ -36,7 +43,7 @@ export default function AuthPage() {
     <div className="min-h-screen bg-gradient-to-br from-black via-blue-900 to-black flex items-center justify-center p-4">
       <div className="bg-black/50 backdrop-blur-lg p-8 rounded-2xl border border-blue-500/30 w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
-          <img src="/logo.svg" alt="Logo" className="w-20 h-20 mb-4" />
+          <img src="/logo.png" alt="Logo" className="w-20 h-20 mb-4" />
           <h1 className="text-3xl font-bold text-white text-center">
             {isLogin ? "Welcome Back" : "Join the Team"}
           </h1>
@@ -45,6 +52,12 @@ export default function AuthPage() {
         {error && (
           <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4">
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="bg-green-500/20 border border-green-500 text-green-200 px-4 py-3 rounded-lg mb-4">
+            {success}
           </div>
         )}
 

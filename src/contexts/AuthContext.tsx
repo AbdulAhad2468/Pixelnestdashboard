@@ -6,7 +6,8 @@ interface User {
   id: string;
   email: string;
   name: string;
-  role: "admin" | "member";
+  role: string;
+  approved?: boolean;
 }
 
 interface AuthContextType {
@@ -14,6 +15,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   signup: (email: string, password: string, name: string) => Promise<boolean>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,6 +35,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
   }, []);
+
+  // Poll for user updates every 5 seconds to reflect admin changes
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch("/api/users");
+        if (response.ok) {
+          const users = await response.json();
+          const updatedUser = users.find((u: User) => u.id === user.id);
+          if (updatedUser) {
+            // Only update if something changed
+            if (JSON.stringify(updatedUser) !== JSON.stringify(user)) {
+              setUser(updatedUser);
+              localStorage.setItem("user", JSON.stringify(updatedUser));
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to poll user updates:", error);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [user]);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
@@ -81,8 +109,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("user");
   };
 
+  const refreshUser = async () => {
+    if (!user) return;
+    try {
+      const response = await fetch("/api/users");
+      if (response.ok) {
+        const users = await response.json();
+        const updatedUser = users.find((u: User) => u.id === user.id);
+        if (updatedUser) {
+          setUser(updatedUser);
+          localStorage.setItem("user", JSON.stringify(updatedUser));
+        }
+      }
+    } catch (error) {
+      console.error("Failed to refresh user:", error);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

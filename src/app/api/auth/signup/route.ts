@@ -25,13 +25,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email already exists" }, { status: 400 });
     }
 
-    // Create new user
+    // Create new user (pending approval)
     const newUser = {
       id: Date.now().toString(),
       email,
       password,
       name,
       role: "member",
+      approved: false,
       createdAt: new Date().toISOString(),
     };
 

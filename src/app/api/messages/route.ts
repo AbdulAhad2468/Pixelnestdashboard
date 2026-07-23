@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 // POST send private message
 export async function POST(request: NextRequest) {
   try {
-    const { senderId, receiverId, text } = await request.json();
+    const { senderId, receiverId, text, attachment } = await request.json();
 
     if (!senderId || !receiverId || !text) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
       text,
       timestamp: new Date().toISOString(),
       read: false,
+      attachment: attachment || undefined,
     };
 
     messages.push(newMessage);
@@ -65,5 +66,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(newMessage);
   } catch (error) {
     return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
+  }
+}
+
+// DELETE private message
+export async function DELETE(request: NextRequest) {
+  try {
+    const { messageId } = await request.json();
+
+    if (!messageId) {
+      return NextResponse.json({ error: "Message ID required" }, { status: 400 });
+    }
+
+    if (!fs.existsSync(MESSAGES_FILE)) {
+      return NextResponse.json({ error: "Messages file not found" }, { status: 404 });
+    }
+
+    const messages = JSON.parse(fs.readFileSync(MESSAGES_FILE, "utf-8"));
+    const messageIndex = messages.findIndex((m: any) => m.id === messageId);
+    
+    if (messageIndex === -1) {
+      return NextResponse.json({ error: "Message not found" }, { status: 404 });
+    }
+
+    messages.splice(messageIndex, 1);
+    fs.writeFileSync(MESSAGES_FILE, JSON.stringify(messages, null, 2));
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: "Failed to delete message" }, { status: 500 });
   }
 }

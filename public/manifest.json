@@ -1,0 +1,52 @@
+{
+  "name": "Pixel Nest",
+  "short_name": "Pixel Nest",
+  "description": "A collaborative project management and communication platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/Grid & Logic (LOGO).ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/Grid & Logic (LOGO).jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/Grid & Logic (LOGO).svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Board",
+      "short_name": "Board",
+      "description": "Go to Kanban Board",
+      "url": "/board",
+      "icons": [{ "src": "/Grid & Logic (LOGO).jpg", "sizes": "96x96" }]
+    },
+    {
+      "name": "Channels",
+      "short_name": "Channels",
+      "description": "Go to Channels",
+      "url": "/channels",
+      "icons": [{ "src": "/Grid & Logic (LOGO).jpg", "sizes": "96x96" }]
+    },
+    {
+      "name": "Messages",
+      "short_name": "Messages",
+      "description": "Go to Messages",
+      "url": "/messages",
+      "icons": [{ "src": "/Grid & Logic (LOGO).jpg", "sizes": "96x96" }]
+    }
+  ]
+}

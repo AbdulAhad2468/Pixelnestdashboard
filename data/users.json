@@ -1,10 +1,29 @@
 [
   {
-    "id": "1784536910770",
+    "id": "1784658184837",
     "email": "abdulahad2086907@gmail.com",
     "password": "020711",
     "name": "Abdul Ahad",
-    "role": "member",
-    "createdAt": "2026-07-20T08:41:50.770Z"
+    "role": "Web developer",
+    "createdAt": "2026-07-21T18:23:04.837Z",
+    "approved": true
+  },
+  {
+    "id": "1784713396157",
+    "email": "pixelnestagcy@gmail.com",
+    "password": "Jontipixel2024",
+    "name": "Pixel Nest",
+    "role": "admin",
+    "createdAt": "2026-07-22T09:43:16.157Z",
+    "approved": true
+  },
+  {
+    "id": "1784809473910",
+    "email": "admin123@owner.com",
+    "password": "Jontigrid2024*",
+    "name": "Development",
+    "role": "admin",
+    "approved": true,
+    "createdAt": "2026-07-23T12:24:33.910Z"
   }
 ]

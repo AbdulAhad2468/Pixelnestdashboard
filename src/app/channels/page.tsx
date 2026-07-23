@@ -16,15 +16,25 @@ export default function ChannelsPage() {
     }
   }, [user, router]);
 
-  if (!user) {
-    return null;
+  if (!user || user.approved === false) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-blue-900 to-black">
+        <Navigation />
+        <div className="flex items-center justify-center min-h-[calc(100vh-64px)] p-4">
+          <div className="bg-black/50 backdrop-blur-lg rounded-xl border border-blue-500/30 p-8 max-w-md text-center">
+            <h2 className="text-2xl font-bold text-white mb-4">Access Pending</h2>
+            <p className="text-blue-300">Please wait for an admin to approve your account before accessing Channels.</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-blue-900 to-black">
       <Navigation />
       <div className="p-4 md:p-8">
-        <h1 className="text-3xl font-bold text-white mb-6">Channels</h1>
+ 
         <Chat />
       </div>
     </div>

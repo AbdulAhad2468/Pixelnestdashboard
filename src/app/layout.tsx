@@ -1,14 +1,24 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 
 export const metadata: Metadata = {
-  title: "Sprint Board",
-  description: "4-column Kanban sprint board",
+  title: "Pixel Nest",
+  description: "Pixel Nest project management",
+  manifest: "/manifest.json",
   icons: {
-    icon: "/favicon.ico",
-    apple: "/logo.jpg",
+    icon: "/Grid & Logic (LOGO).ico",
+    apple: "/Grid & Logic (LOGO).jpg",
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Pixel Nest",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2563eb",
 };
 
 export default function RootLayout({
@@ -18,6 +28,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#2563eb" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="Pixel Nest" />
+      </head>
       <body>
         <AuthProvider>
           {children}
