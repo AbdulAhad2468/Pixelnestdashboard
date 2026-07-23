@@ -8,9 +8,15 @@
         "title": "To Do",
         "tasks": [
           {
-            "id": "1",
-            "title": "Design System Setup",
-            "description": "Create design tokens and components",
+            "id": "1784537476451",
+            "title": "graphics",
+            "description": "logo for building",
+            "priority": "high"
+          },
+          {
+            "id": "3",
+            "title": "User Authentication",
+            "description": "Implement login and signup",
             "priority": "high"
           }
         ]
@@ -20,15 +26,9 @@
         "title": "In Progress",
         "tasks": [
           {
-            "id": "3",
-            "title": "User Authentication",
-            "description": "Implement login and signup",
-            "priority": "high"
-          },
-          {
-            "id": "1784537476451",
-            "title": "graphics",
-            "description": "logo for building",
+            "id": "1",
+            "title": "Design System Setup",
+            "description": "Create design tokens and components",
             "priority": "high"
           }
         ]

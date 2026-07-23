@@ -14,10 +14,10 @@ export async function GET(request: NextRequest) {
     const messages = await getPrivateMessages(userId);
     const formattedMessages = messages.map((msg: any) => ({
       id: msg.id,
-      senderId: msg.sender_id,
-      receiverId: msg.receiver_id,
+      senderId: msg.senderId,
+      receiverId: msg.receiverId,
       text: msg.text,
-      timestamp: msg.created_at,
+      timestamp: msg.timestamp,
       read: msg.read,
       attachment: msg.attachment
     }));
@@ -51,10 +51,10 @@ export async function POST(request: NextRequest) {
     const createdMessage = await createPrivateMessage(newMessage);
     return NextResponse.json({
       id: createdMessage.id,
-      senderId: createdMessage.sender_id,
-      receiverId: createdMessage.receiver_id,
+      senderId: createdMessage.senderId,
+      receiverId: createdMessage.receiverId,
       text: createdMessage.text,
-      timestamp: createdMessage.created_at,
+      timestamp: createdMessage.timestamp,
       read: createdMessage.read,
       attachment: createdMessage.attachment
     });

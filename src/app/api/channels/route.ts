@@ -17,7 +17,7 @@ export async function GET() {
             id: msg.id,
             text: msg.text,
             sender: msg.sender,
-            timestamp: msg.created_at,
+            timestamp: msg.timestamp,
             attachment: msg.attachment
           }))
         };

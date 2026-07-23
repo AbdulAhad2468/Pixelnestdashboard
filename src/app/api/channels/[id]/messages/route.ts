@@ -25,7 +25,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       id: createdMessage.id,
       text: createdMessage.text,
       sender: createdMessage.sender,
-      timestamp: createdMessage.created_at,
+      timestamp: createdMessage.timestamp,
       attachment: createdMessage.attachment
     });
   } catch (error) {
