@@ -6,10 +6,11 @@ export const metadata: Metadata = {
   title: "Pixel Nest",
   description: "Pixel Nest project management",
   manifest: "/manifest.json",
-  icons: {
-    icon: "/favicon.ico",
-    apple: "/logo.png",
-  },
+  icons: [
+    { rel: "icon", url: "/favicon.ico", sizes: "any" },
+    { rel: "icon", url: "/favicon.svg", type: "image/svg+xml" },
+    { rel: "apple-touch-icon", url: "/logo.png" },
+  ],
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
