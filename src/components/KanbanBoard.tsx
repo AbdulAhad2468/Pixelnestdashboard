@@ -276,6 +276,39 @@ export default function KanbanBoard() {
     }
   };
 
+  const handleCreateBoard = async () => {
+    if (user?.role !== "admin") return;
+    const name = prompt("Enter board name:");
+    if (!name) return;
+
+    try {
+      const response = await fetch("/api/boards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+
+      if (response.ok) {
+        fetchBoard();
+      }
+    } catch (error) {
+      console.error("Failed to create board:", error);
+    }
+  };
+
+  const getPriorityBorderColor = (priority: string) => {
+    switch (priority) {
+      case "high":
+        return "border-red-500";
+      case "medium":
+        return "border-yellow-500";
+      case "low":
+        return "border-green-500";
+      default:
+        return "border-blue-500";
+    }
+  };
+
   return (
     <div className="flex h-[100dvh] relative overflow-hidden">
       {/* Board Sidebar */}
@@ -320,13 +353,33 @@ export default function KanbanBoard() {
       </button>
 
       {/* Kanban Board */}
-      <div className="flex-1 p-5 md:p-6 overflow-x-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 md:gap-6 min-w-0">
+      <div className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden">
+        <div className="flex items-center justify-between mb-4 md:mb-6 flex-shrink-0">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-white">
+              {board?.name || "Sprint Board"}
+            </h1>
+            <p className="text-blue-300 text-sm">
+              {columns.length} columns · {columns.reduce((acc, col) => acc + col.tasks.length, 0)} tasks
+            </p>
+          </div>
+          {user?.role === "admin" && (
+            <button
+              onClick={handleCreateBoard}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors active:scale-95"
+            >
+              + New Board
+            </button>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-x-auto overflow-y-hidden -mx-4 px-4 md:-mx-6 md:px-6">
+          <div className="flex space-x-4 md:space-x-6 min-w-full h-full pb-2">
         {columns.map((column) => (
           <div
             key={column.id}
             data-column-id={column.id}
-            className="bg-black/30 backdrop-blur-lg rounded-xl p-5 md:p-6 min-h-[400px] md:min-h-[500px] border border-blue-500/30 shadow-lg"
+            className="bg-black/30 backdrop-blur-lg rounded-xl p-5 md:p-6 min-h-[400px] md:min-h-[500px] border border-blue-500/30 shadow-lg w-80 flex-shrink-0 flex flex-col"
             onDragOver={handleDragOver}
             onDrop={() => handleDrop(column.id)}
           >
@@ -349,7 +402,12 @@ export default function KanbanBoard() {
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 flex-1 overflow-y-auto pr-1">
+              {column.tasks.length === 0 && (
+                <div className="text-center py-8 text-blue-300/60 text-sm border-2 border-dashed border-blue-500/20 rounded-lg">
+                  Drop tasks here
+                </div>
+              )}
               {column.tasks.map((task) => (
                 <div
                   key={task.id}
@@ -358,7 +416,7 @@ export default function KanbanBoard() {
                   onTouchStart={(e) => handleTouchStart(e, task.id, column.id)}
                   onTouchMove={handleTouchMove}
                   onTouchEnd={handleTouchEnd}
-                  className="bg-black/50 rounded-xl p-4 md:p-4 shadow-lg hover:shadow-xl transition-shadow cursor-move border-l-4 border-blue-500 touch-none active:scale-98 transition-transform"
+                  className={`bg-black/50 rounded-xl p-4 md:p-4 shadow-lg hover:shadow-xl transition-all cursor-move border-l-4 ${getPriorityBorderColor(task.priority)} touch-none active:scale-98`}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <h3 className="font-semibold text-white text-base md:text-base leading-tight">
@@ -404,5 +462,6 @@ export default function KanbanBoard() {
       </div>
     </div>
   </div>
+</div>
   );
 }
