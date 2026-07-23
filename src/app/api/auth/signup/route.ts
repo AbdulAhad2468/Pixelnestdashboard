@@ -11,14 +11,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email already exists" }, { status: 400 });
     }
 
-    // Create new user (pending approval)
+    // Create new user (auto-approved for immediate access)
     const newUser = {
       id: Date.now().toString(),
       email,
       password,
       name,
       role: "member",
-      approved: false,
+      approved: true,
       createdAt: new Date().toISOString(),
     };
 

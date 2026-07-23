@@ -18,20 +18,20 @@ export default function AuthPage() {
     setSuccess("");
 
     if (isLogin) {
-      const success = await login(email, password);
-      if (!success) {
-        setError("Invalid email or password");
+      const result = await login(email, password);
+      if (!result.success) {
+        setError(result.error || "Invalid email or password");
       }
     } else {
       if (!name.trim()) {
         setError("Name is required");
         return;
       }
-      const success = await signup(email, password, name);
-      if (!success) {
-        setError("Email already exists");
+      const result = await signup(email, password, name);
+      if (!result.success) {
+        setError(result.error || "Signup failed");
       } else {
-        setSuccess("Account created! Please wait for an admin to approve your access to chat, DMs, and Sprint Board.");
+        setSuccess("Account created! You can now use chat, DMs, and Sprint Board.");
         setEmail("");
         setPassword("");
         setName("");

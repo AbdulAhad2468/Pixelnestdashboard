@@ -10,10 +10,15 @@ interface User {
   approved?: boolean;
 }
 
+interface AuthResult {
+  success: boolean;
+  error?: string;
+}
+
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<boolean>;
-  signup: (email: string, password: string, name: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<AuthResult>;
+  signup: (email: string, password: string, name: string) => Promise<AuthResult>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -62,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [user]);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<AuthResult> => {
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST",
@@ -74,16 +79,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await response.json();
         setUser(data.user);
         localStorage.setItem("user", JSON.stringify(data.user));
-        return true;
+        return { success: true };
       }
-      return false;
+      const errorData = await response.json().catch(() => ({}));
+      return { success: false, error: errorData.error || "Invalid email or password" };
     } catch (error) {
       console.error("Login error:", error);
-      return false;
+      return { success: false, error: "Network error. Please try again." };
     }
   };
 
-  const signup = async (email: string, password: string, name: string): Promise<boolean> => {
+  const signup = async (email: string, password: string, name: string): Promise<AuthResult> => {
     try {
       const response = await fetch("/api/auth/signup", {
         method: "POST",
@@ -95,12 +101,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await response.json();
         setUser(data.user);
         localStorage.setItem("user", JSON.stringify(data.user));
-        return true;
+        return { success: true };
       }
-      return false;
+      const errorData = await response.json().catch(() => ({}));
+      return { success: false, error: errorData.error || "Signup failed" };
     } catch (error) {
       console.error("Signup error:", error);
-      return false;
+      return { success: false, error: "Network error. Please try again." };
     }
   };
 
