@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { initializeAllData } from "@/lib/init-data";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const CHANNELS_FILE = path.join(DATA_DIR, "channels.json");
@@ -8,6 +9,7 @@ const CHANNELS_FILE = path.join(DATA_DIR, "channels.json");
 // GET all channels
 export async function GET() {
   try {
+    initializeAllData();
     if (!fs.existsSync(CHANNELS_FILE)) {
       return NextResponse.json([]);
     }

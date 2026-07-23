@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { initializeAllData } from "@/lib/init-data";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const BOARDS_FILE = path.join(DATA_DIR, "boards.json");
@@ -8,6 +9,7 @@ const BOARDS_FILE = path.join(DATA_DIR, "boards.json");
 // GET all boards
 export async function GET() {
   try {
+    initializeAllData();
     if (!fs.existsSync(BOARDS_FILE)) {
       return NextResponse.json([]);
     }

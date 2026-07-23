@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { initializeAllData } from "@/lib/init-data";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 
 export async function POST(request: NextRequest) {
   try {
+    // Initialize data files if they don't exist
+    initializeAllData();
+
     const { email, password } = await request.json();
 
     // Check regular users
