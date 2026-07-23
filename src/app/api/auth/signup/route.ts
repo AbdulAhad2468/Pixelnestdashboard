@@ -1,27 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const USERS_FILE = path.join(DATA_DIR, "users.json");
+import { getUserByEmail, createUser } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   try {
     const { email, password, name } = await request.json();
 
-    // Ensure data directory exists
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-
-    // Read existing users
-    let users = [];
-    if (fs.existsSync(USERS_FILE)) {
-      users = JSON.parse(fs.readFileSync(USERS_FILE, "utf-8"));
-    }
-
     // Check if user already exists
-    if (users.find((u: any) => u.email === email)) {
+    const existingUser = await getUserByEmail(email);
+    if (existingUser) {
       return NextResponse.json({ error: "Email already exists" }, { status: 400 });
     }
 
@@ -36,12 +22,11 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString(),
     };
 
-    users.push(newUser);
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-
-    const { password: _, ...userWithoutPassword } = newUser;
+    const createdUser = await createUser(newUser);
+    const { password: _, ...userWithoutPassword } = createdUser;
     return NextResponse.json({ user: userWithoutPassword });
   } catch (error) {
+    console.error("Signup error:", error);
     return NextResponse.json({ error: "Signup failed" }, { status: 500 });
   }
 }

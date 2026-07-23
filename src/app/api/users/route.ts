@@ -1,27 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const USERS_FILE = path.join(DATA_DIR, "users.json");
+import { getUsers } from "@/lib/db";
 
 // GET all users (for private chat user list)
 export async function GET() {
   try {
-    let users = [];
+    const users = await getUsers();
 
-    if (fs.existsSync(USERS_FILE)) {
-      users = JSON.parse(fs.readFileSync(USERS_FILE, "utf-8"));
-    }
-
-    // Remove passwords from response
-    const usersWithoutPasswords = users.map((user: any) => {
-      const { password, ...userWithoutPassword } = user;
-      return userWithoutPassword;
-    });
+    // Remove passwords from response and format
+    const usersWithoutPasswords = users.map((user: any) => ({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      approved: user.approved,
+      createdAt: user.created_at
+    }));
 
     return NextResponse.json(usersWithoutPasswords);
   } catch (error) {
+    console.error("Failed to fetch users:", error);
     return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 });
   }
 }

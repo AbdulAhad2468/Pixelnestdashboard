@@ -7,8 +7,8 @@ export const metadata: Metadata = {
   description: "Pixel Nest project management",
   manifest: "/manifest.json",
   icons: {
-    icon: "/Grid & Logic (LOGO).ico",
-    apple: "/Grid & Logic (LOGO).jpg",
+    icon: "/favicon.ico",
+    apple: "/logo.png",
   },
   appleWebApp: {
     capable: true,

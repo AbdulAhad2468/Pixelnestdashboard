@@ -1,21 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import { initializeAllData } from "@/lib/init-data";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const BOARDS_FILE = path.join(DATA_DIR, "boards.json");
+import { getBoards, createBoard, getColumns, createColumn, getTasks } from "@/lib/db";
 
 // GET all boards
 export async function GET() {
   try {
-    initializeAllData();
-    if (!fs.existsSync(BOARDS_FILE)) {
-      return NextResponse.json([]);
-    }
-    const boards = JSON.parse(fs.readFileSync(BOARDS_FILE, "utf-8"));
-    return NextResponse.json(boards);
+    const boards = await getBoards();
+    
+    // Fetch columns and tasks for each board
+    const boardsWithColumns = await Promise.all(
+      boards.map(async (board: any) => {
+        const columns = await getColumns(board.id);
+        const columnsWithTasks = await Promise.all(
+          columns.map(async (col: any) => {
+            const tasks = await getTasks(col.id);
+            return {
+              id: col.id,
+              title: col.title,
+              tasks: tasks.map((task: any) => ({
+                id: task.id,
+                title: task.title,
+                description: task.description,
+                priority: task.priority,
+                dueDate: task.due_date
+              }))
+            };
+          })
+        );
+        return {
+          ...board,
+          columns: columnsWithTasks
+        };
+      })
+    );
+    
+    return NextResponse.json(boardsWithColumns);
   } catch (error) {
+    console.error("Failed to fetch boards:", error);
     return NextResponse.json({ error: "Failed to fetch boards" }, { status: 500 });
   }
 }
@@ -29,35 +49,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Board name is required" }, { status: 400 });
     }
 
-    // Ensure data directory exists
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-
-    // Read existing boards
-    let boards = [];
-    if (fs.existsSync(BOARDS_FILE)) {
-      boards = JSON.parse(fs.readFileSync(BOARDS_FILE, "utf-8"));
-    }
-
-    // Create new board with default columns
+    // Create new board
     const newBoard = {
       id: Date.now().toString(),
       name,
-      columns: [
-        { id: "todo", title: "To Do", tasks: [] },
-        { id: "in-progress", title: "In Progress", tasks: [] },
-        { id: "review", title: "Review", tasks: [] },
-        { id: "done", title: "Done", tasks: [] },
-      ],
       createdAt: new Date().toISOString(),
     };
 
-    boards.push(newBoard);
-    fs.writeFileSync(BOARDS_FILE, JSON.stringify(boards, null, 2));
+    const createdBoard = await createBoard(newBoard);
 
-    return NextResponse.json(newBoard);
+    // Create default columns
+    const defaultColumns = [
+      { id: `${createdBoard.id}_todo`, boardId: createdBoard.id, title: "To Do" },
+      { id: `${createdBoard.id}_in-progress`, boardId: createdBoard.id, title: "In Progress" },
+      { id: `${createdBoard.id}_review`, boardId: createdBoard.id, title: "Review" },
+      { id: `${createdBoard.id}_done`, boardId: createdBoard.id, title: "Done" },
+    ];
+
+    await Promise.all(defaultColumns.map(createColumn));
+
+    return NextResponse.json({
+      ...createdBoard,
+      columns: defaultColumns.map(col => ({
+        id: col.id,
+        title: col.title,
+        tasks: []
+      }))
+    });
   } catch (error) {
+    console.error("Failed to create board:", error);
     return NextResponse.json({ error: "Failed to create board" }, { status: 500 });
   }
 }

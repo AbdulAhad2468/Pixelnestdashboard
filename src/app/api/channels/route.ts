@@ -1,21 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import { initializeAllData } from "@/lib/init-data";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const CHANNELS_FILE = path.join(DATA_DIR, "channels.json");
+import { getChannels, createChannel } from "@/lib/db";
 
 // GET all channels
 export async function GET() {
   try {
-    initializeAllData();
-    if (!fs.existsSync(CHANNELS_FILE)) {
-      return NextResponse.json([]);
-    }
-    const channels = JSON.parse(fs.readFileSync(CHANNELS_FILE, "utf-8"));
-    return NextResponse.json(channels);
+    const channels = await getChannels();
+    
+    // Fetch messages for each channel
+    const channelsWithMessages = await Promise.all(
+      channels.map(async (channel: any) => {
+        const { getMessages } = await import("@/lib/db");
+        const messages = await getMessages(channel.id);
+        return {
+          ...channel,
+          messages: messages.map((msg: any) => ({
+            id: msg.id,
+            text: msg.text,
+            sender: msg.sender,
+            timestamp: msg.created_at,
+            attachment: msg.attachment
+          }))
+        };
+      })
+    );
+    
+    return NextResponse.json(channelsWithMessages);
   } catch (error) {
+    console.error("Failed to fetch channels:", error);
     return NextResponse.json({ error: "Failed to fetch channels" }, { status: 500 });
   }
 }
@@ -29,34 +40,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Channel name is required" }, { status: 400 });
     }
 
-    // Ensure data directory exists
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-
-    // Read existing channels
-    let channels = [];
-    if (fs.existsSync(CHANNELS_FILE)) {
-      channels = JSON.parse(fs.readFileSync(CHANNELS_FILE, "utf-8"));
-    }
-
-    // Check if channel already exists
-    if (channels.find((c: any) => c.name === name)) {
-      return NextResponse.json({ error: "Channel already exists" }, { status: 400 });
-    }
-
     const newChannel = {
       id: Date.now().toString(),
       name,
-      messages: [],
       createdAt: new Date().toISOString(),
     };
 
-    channels.push(newChannel);
-    fs.writeFileSync(CHANNELS_FILE, JSON.stringify(channels, null, 2));
-
-    return NextResponse.json(newChannel);
+    const createdChannel = await createChannel(newChannel);
+    return NextResponse.json({
+      ...createdChannel,
+      messages: []
+    });
   } catch (error) {
+    console.error("Failed to create channel:", error);
     return NextResponse.json({ error: "Failed to create channel" }, { status: 500 });
   }
 }

@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const USERS_FILE = path.join(DATA_DIR, "users.json");
+import { getUserById, updateUser } from "@/lib/db";
+import { sql } from '@vercel/postgres';
 
 // PUT - Edit user
 export async function PUT(
@@ -17,36 +14,32 @@ export async function PUT(
       return NextResponse.json({ error: "Name, email, and role are required" }, { status: 400 });
     }
 
-    if (!fs.existsSync(USERS_FILE)) {
-      return NextResponse.json({ error: "Users file not found" }, { status: 404 });
-    }
-
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, "utf-8"));
-    const userIndex = users.findIndex((u: any) => u.id === params.id);
-
-    if (userIndex === -1) {
+    const existingUser = await getUserById(params.id);
+    if (!existingUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const existingUser = users[userIndex];
     const isProtectedAdmin = existingUser.name && existingUser.name.toLowerCase().includes("pixel nest");
 
     // Protected admin users always keep admin role
+    const updates: any = {
+      name,
+      email,
+    };
+
     if (isProtectedAdmin) {
-      existingUser.role = "admin";
-      existingUser.approved = true;
+      updates.role = "admin";
+      updates.approved = true;
     } else {
-      existingUser.role = role;
-      existingUser.approved = approved;
+      updates.role = role;
+      updates.approved = approved;
     }
 
-    existingUser.name = name;
-    existingUser.email = email;
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-
-    const { password, ...userWithoutPassword } = existingUser;
+    const updatedUser = await updateUser(params.id, updates);
+    const { password, ...userWithoutPassword } = updatedUser;
     return NextResponse.json(userWithoutPassword);
   } catch (error) {
+    console.error("Failed to edit user:", error);
     return NextResponse.json({ error: "Failed to edit user" }, { status: 500 });
   }
 }
@@ -57,29 +50,21 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    if (!fs.existsSync(USERS_FILE)) {
-      return NextResponse.json({ error: "Users file not found" }, { status: 404 });
-    }
-
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, "utf-8"));
-    const userIndex = users.findIndex((u: any) => u.id === params.id);
-
-    if (userIndex === -1) {
+    const existingUser = await getUserById(params.id);
+    if (!existingUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const existingUser = users[userIndex];
     const isProtectedAdmin = existingUser.name && existingUser.name.toLowerCase().includes("pixel nest");
 
     if (isProtectedAdmin) {
       return NextResponse.json({ error: "Cannot delete protected admin user" }, { status: 403 });
     }
 
-    users.splice(userIndex, 1);
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-
+    await sql`DELETE FROM users WHERE id = ${params.id}`;
     return NextResponse.json({ success: true });
   } catch (error) {
+    console.error("Failed to delete user:", error);
     return NextResponse.json({ error: "Failed to delete user" }, { status: 500 });
   }
 }

@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const BOARDS_FILE = path.join(DATA_DIR, "boards.json");
+import { updateTask, deleteTask } from "@/lib/db";
 
 // PUT update task
 export async function PUT(request: NextRequest, { params }: { params: { id: string; taskId: string } }) {
@@ -11,38 +7,16 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const { id, taskId } = params;
     const { title, description, priority } = await request.json();
 
-    if (!fs.existsSync(BOARDS_FILE)) {
-      return NextResponse.json({ error: "Board not found" }, { status: 404 });
-    }
+    const updates: any = {};
+    if (title) updates.title = title;
+    if (description !== undefined) updates.description = description;
+    if (priority) updates.priority = priority;
+    updates.updated_at = new Date().toISOString();
 
-    const boards = JSON.parse(fs.readFileSync(BOARDS_FILE, "utf-8"));
-    const board = boards.find((b: any) => b.id === id);
-
-    if (!board) {
-      return NextResponse.json({ error: "Board not found" }, { status: 404 });
-    }
-
-    // Find and update task
-    let taskFound = false;
-    for (const column of board.columns) {
-      const task = column.tasks.find((t: any) => t.id === taskId);
-      if (task) {
-        if (title) task.title = title;
-        if (description !== undefined) task.description = description;
-        if (priority) task.priority = priority;
-        task.updatedAt = new Date().toISOString();
-        taskFound = true;
-        break;
-      }
-    }
-
-    if (!taskFound) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
-    }
-
-    fs.writeFileSync(BOARDS_FILE, JSON.stringify(boards, null, 2));
+    const updatedTask = await updateTask(taskId, updates);
     return NextResponse.json({ success: true });
   } catch (error) {
+    console.error("Failed to update task:", error);
     return NextResponse.json({ error: "Failed to update task" }, { status: 500 });
   }
 }
@@ -52,35 +26,10 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   try {
     const { id, taskId } = params;
 
-    if (!fs.existsSync(BOARDS_FILE)) {
-      return NextResponse.json({ error: "Board not found" }, { status: 404 });
-    }
-
-    const boards = JSON.parse(fs.readFileSync(BOARDS_FILE, "utf-8"));
-    const board = boards.find((b: any) => b.id === id);
-
-    if (!board) {
-      return NextResponse.json({ error: "Board not found" }, { status: 404 });
-    }
-
-    // Find and remove task
-    let taskFound = false;
-    for (const column of board.columns) {
-      const taskIndex = column.tasks.findIndex((t: any) => t.id === taskId);
-      if (taskIndex !== -1) {
-        column.tasks.splice(taskIndex, 1);
-        taskFound = true;
-        break;
-      }
-    }
-
-    if (!taskFound) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
-    }
-
-    fs.writeFileSync(BOARDS_FILE, JSON.stringify(boards, null, 2));
+    await deleteTask(taskId);
     return NextResponse.json({ success: true });
   } catch (error) {
+    console.error("Failed to delete task:", error);
     return NextResponse.json({ error: "Failed to delete task" }, { status: 500 });
   }
 }
