@@ -6,14 +6,14 @@ CREATE TABLE IF NOT EXISTS users (
   name VARCHAR(255) NOT NULL,
   role VARCHAR(50) DEFAULT 'member',
   approved BOOLEAN DEFAULT false,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT DEFAULT now()::text
 );
 
 -- Boards table
 CREATE TABLE IF NOT EXISTS boards (
   id VARCHAR(255) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT DEFAULT now()::text
 );
 
 -- Columns table
@@ -32,8 +32,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   description TEXT,
   priority VARCHAR(20) DEFAULT 'medium',
   due_date VARCHAR(50),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT DEFAULT now()::text,
+  updated_at TEXT DEFAULT now()::text,
   FOREIGN KEY (column_id) REFERENCES columns(id) ON DELETE CASCADE
 );
 
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE TABLE IF NOT EXISTS channels (
   id VARCHAR(255) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT DEFAULT now()::text
 );
 
 -- Channel messages table
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS channel_messages (
   text TEXT NOT NULL,
   sender VARCHAR(255) NOT NULL,
   attachment TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT DEFAULT now()::text,
   FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
 );
 
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS private_messages (
   text TEXT NOT NULL,
   attachment TEXT,
   read BOOLEAN DEFAULT false,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT DEFAULT now()::text,
   FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE
 );

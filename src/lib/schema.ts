@@ -7,14 +7,14 @@ export async function ensureSchema(sql: any) {
     name VARCHAR(255) NOT NULL,
     role VARCHAR(50) DEFAULT 'member',
     approved BOOLEAN DEFAULT false,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT now()::text
   )`;
 
   // Boards
   await sql`CREATE TABLE IF NOT EXISTS boards (
     id VARCHAR(255) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT now()::text
   )`;
 
   // Columns
@@ -33,8 +33,8 @@ export async function ensureSchema(sql: any) {
     description TEXT,
     priority VARCHAR(20) DEFAULT 'medium',
     due_date VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT now()::text,
+    updated_at TEXT DEFAULT now()::text,
     FOREIGN KEY (column_id) REFERENCES columns(id) ON DELETE CASCADE
   )`;
 
@@ -42,7 +42,7 @@ export async function ensureSchema(sql: any) {
   await sql`CREATE TABLE IF NOT EXISTS channels (
     id VARCHAR(255) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT now()::text
   )`;
 
   // Channel messages
@@ -52,7 +52,7 @@ export async function ensureSchema(sql: any) {
     text TEXT NOT NULL,
     sender VARCHAR(255) NOT NULL,
     attachment TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT now()::text,
     FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
   )`;
 
@@ -64,10 +64,19 @@ export async function ensureSchema(sql: any) {
     text TEXT NOT NULL,
     attachment TEXT,
     read BOOLEAN DEFAULT false,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT now()::text,
     FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE
   )`;
+
+  // Convert any existing TIMESTAMP columns to TEXT for ISO 8601 compatibility
+  await sql`ALTER TABLE IF EXISTS users ALTER COLUMN created_at TYPE TEXT USING created_at::text`;
+  await sql`ALTER TABLE IF EXISTS boards ALTER COLUMN created_at TYPE TEXT USING created_at::text`;
+  await sql`ALTER TABLE IF EXISTS tasks ALTER COLUMN created_at TYPE TEXT USING created_at::text`;
+  await sql`ALTER TABLE IF EXISTS tasks ALTER COLUMN updated_at TYPE TEXT USING updated_at::text`;
+  await sql`ALTER TABLE IF EXISTS channels ALTER COLUMN created_at TYPE TEXT USING created_at::text`;
+  await sql`ALTER TABLE IF EXISTS channel_messages ALTER COLUMN created_at TYPE TEXT USING created_at::text`;
+  await sql`ALTER TABLE IF EXISTS private_messages ALTER COLUMN created_at TYPE TEXT USING created_at::text`;
 
   // Seed defaults
   await sql`INSERT INTO users (id, email, password, name, role, approved, created_at)
