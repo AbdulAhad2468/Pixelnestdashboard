@@ -2,11 +2,22 @@ import fs from "fs";
 import path from "path";
 
 let _sql: any = null;
+let _schemaPromise: Promise<void> | null = null;
+
 async function getSql() {
   if (!_sql) {
     const { sql } = await import("@vercel/postgres");
     _sql = sql;
   }
+  if (!_schemaPromise) {
+    const { ensureSchema } = await import("./schema");
+    _schemaPromise = ensureSchema(_sql).catch((error: any) => {
+      console.error("Failed to ensure schema:", error);
+      _schemaPromise = null;
+      throw error;
+    });
+  }
+  await _schemaPromise;
   return _sql;
 }
 
