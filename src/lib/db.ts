@@ -6,8 +6,10 @@ let _schemaPromise: Promise<void> | null = null;
 
 async function getSql() {
   if (!_sql) {
-    const { sql } = await import("@vercel/postgres");
-    _sql = sql;
+    const { neon } = await import("@neondatabase/serverless");
+    const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+    if (!connectionString) throw new Error("No Postgres connection string set");
+    _sql = neon(connectionString);
   }
   if (!_schemaPromise) {
     const { ensureSchema } = await import("./schema");
@@ -138,7 +140,7 @@ initAll();
 export async function getUsers() {
   if (isPostgres()) {
     const sql = await getSql();
-    const { rows } = await sql`SELECT id, email, password, name, role, approved, created_at as "createdAt" FROM users`;
+    const rows = await sql`SELECT id, email, password, name, role, approved, created_at as "createdAt" FROM users`;
     return rows.map((u: any) => ({ ...u, createdAt: u.createdAt || u.created_at }));
   }
   return readJson(USERS_FILE, DEFAULT_USERS);
@@ -147,7 +149,7 @@ export async function getUsers() {
 export async function getUserByEmail(email: string) {
   if (isPostgres()) {
     const sql = await getSql();
-    const { rows } = await sql`SELECT id, email, password, name, role, approved, created_at as "createdAt" FROM users WHERE email = ${email}`;
+    const rows = await sql`SELECT id, email, password, name, role, approved, created_at as "createdAt" FROM users WHERE email = ${email}`;
     const u = rows[0];
     if (u) u.createdAt = u.createdAt || u.created_at;
     return u;
@@ -159,7 +161,7 @@ export async function getUserByEmail(email: string) {
 export async function getUserById(id: string) {
   if (isPostgres()) {
     const sql = await getSql();
-    const { rows } = await sql`SELECT id, email, password, name, role, approved, created_at as "createdAt" FROM users WHERE id = ${id}`;
+    const rows = await sql`SELECT id, email, password, name, role, approved, created_at as "createdAt" FROM users WHERE id = ${id}`;
     const u = rows[0];
     if (u) u.createdAt = u.createdAt || u.created_at;
     return u;
@@ -196,7 +198,7 @@ export async function updateUser(id: string, updates: any) {
     if (sets.length === 0) return await getUserById(id);
     values.push(id);
     const query = `UPDATE users SET ${sets.join(', ')} WHERE id = $${i} RETURNING id, email, password, name, role, approved, created_at as "createdAt"`;
-    const { rows } = await sql.query(query, values);
+    const rows = await sql.query(query, values);
     const u = rows[0];
     if (u) u.createdAt = u.createdAt || u.created_at;
     return u || null;
@@ -225,9 +227,9 @@ export async function deleteUser(id: string) {
 export async function getBoards() {
   if (isPostgres()) {
     const sql = await getSql();
-    const { rows: boardRows } = await sql`SELECT id, name, created_at as "createdAt" FROM boards`;
-    const { rows: columnRows } = await sql`SELECT id, board_id as "boardId", title FROM columns`;
-    const { rows: taskRows } = await sql`SELECT id, column_id as "columnId", title, description, priority, due_date as "dueDate", created_at as "createdAt", updated_at as "updatedAt" FROM tasks`;
+    const boardRows = await sql`SELECT id, name, created_at as "createdAt" FROM boards`;
+    const columnRows = await sql`SELECT id, board_id as "boardId", title FROM columns`;
+    const taskRows = await sql`SELECT id, column_id as "columnId", title, description, priority, due_date as "dueDate", created_at as "createdAt", updated_at as "updatedAt" FROM tasks`;
     return boardRows.map((board: any) => ({
       ...board,
       columns: columnRows.filter((c: any) => c.boardId === board.id).map((column: any) => ({
@@ -270,7 +272,7 @@ export async function createBoard(board: any) {
 export async function getColumns(boardId: string) {
   if (isPostgres()) {
     const sql = await getSql();
-    const { rows } = await sql`SELECT id, board_id as "boardId", title FROM columns WHERE board_id = ${boardId}`;
+    const rows = await sql`SELECT id, board_id as "boardId", title FROM columns WHERE board_id = ${boardId}`;
     return rows;
   }
   const board = await getBoardById(boardId);
@@ -306,7 +308,7 @@ export async function createColumn(column: any) {
 export async function getTasks(columnId: string) {
   if (isPostgres()) {
     const sql = await getSql();
-    const { rows } = await sql`SELECT id, column_id as "columnId", title, description, priority, due_date as "dueDate", created_at as "createdAt", updated_at as "updatedAt" FROM tasks WHERE column_id = ${columnId}`;
+    const rows = await sql`SELECT id, column_id as "columnId", title, description, priority, due_date as "dueDate", created_at as "createdAt", updated_at as "updatedAt" FROM tasks WHERE column_id = ${columnId}`;
     return rows.map((t: any) => ({ ...t, createdAt: t.createdAt || t.created_at, updatedAt: t.updatedAt || t.updated_at }));
   }
   const boards = readJson(BOARDS_FILE, DEFAULT_BOARDS);
@@ -358,7 +360,7 @@ export async function updateTask(id: string, updates: any) {
     i++;
     values.push(id);
     const query = `UPDATE tasks SET ${sets.join(', ')} WHERE id = $${i} RETURNING id, column_id as "columnId", title, description, priority, due_date as "dueDate", created_at as "createdAt", updated_at as "updatedAt"`;
-    const { rows } = await sql.query(query, values);
+    const rows = await sql.query(query, values);
     const t = rows[0];
     if (t) {
       t.createdAt = t.createdAt || t.created_at;
@@ -403,7 +405,7 @@ export async function moveTask(taskId: string, targetColumnId: string) {
   if (isPostgres()) {
     const sql = await getSql();
     const now = new Date().toISOString();
-    const { rows } = await sql`UPDATE tasks SET column_id = ${targetColumnId}, updated_at = ${now} WHERE id = ${taskId} RETURNING id, column_id as "columnId", title, description, priority, due_date as "dueDate", created_at as "createdAt", updated_at as "updatedAt"`;
+    const rows = await sql`UPDATE tasks SET column_id = ${targetColumnId}, updated_at = ${now} WHERE id = ${taskId} RETURNING id, column_id as "columnId", title, description, priority, due_date as "dueDate", created_at as "createdAt", updated_at as "updatedAt"`;
     const t = rows[0];
     if (t) {
       t.createdAt = t.createdAt || t.created_at;
@@ -440,7 +442,7 @@ export async function moveTask(taskId: string, targetColumnId: string) {
 export async function getChannels() {
   if (isPostgres()) {
     const sql = await getSql();
-    const { rows } = await sql`SELECT id, name, created_at as "createdAt" FROM channels`;
+    const rows = await sql`SELECT id, name, created_at as "createdAt" FROM channels`;
     return rows;
   }
   return readJson(CHANNELS_FILE, DEFAULT_CHANNELS);
@@ -449,7 +451,7 @@ export async function getChannels() {
 export async function getChannelById(id: string) {
   if (isPostgres()) {
     const sql = await getSql();
-    const { rows } = await sql`SELECT id, name, created_at as "createdAt" FROM channels WHERE id = ${id}`;
+    const rows = await sql`SELECT id, name, created_at as "createdAt" FROM channels WHERE id = ${id}`;
     return rows[0];
   }
   const channels = readJson(CHANNELS_FILE, DEFAULT_CHANNELS);
@@ -472,7 +474,7 @@ export async function createChannel(channel: any) {
 export async function getMessages(channelId: string) {
   if (isPostgres()) {
     const sql = await getSql();
-    const { rows } = await sql`SELECT id, channel_id as "channelId", text, sender, attachment, created_at as "createdAt" FROM channel_messages WHERE channel_id = ${channelId} ORDER BY created_at`;
+    const rows = await sql`SELECT id, channel_id as "channelId", text, sender, attachment, created_at as "createdAt" FROM channel_messages WHERE channel_id = ${channelId} ORDER BY created_at`;
     return rows.map((m: any) => ({ ...m, createdAt: m.createdAt || m.created_at }));
   }
   const channels = readJson(CHANNELS_FILE, DEFAULT_CHANNELS);
@@ -522,7 +524,7 @@ export async function deleteChannelMessage(messageId: string) {
 export async function getPrivateMessages(userId: string) {
   if (isPostgres()) {
     const sql = await getSql();
-    const { rows } = await sql`SELECT id, sender_id as "senderId", receiver_id as "receiverId", text, attachment, read, created_at as "createdAt" FROM private_messages WHERE sender_id = ${userId} OR receiver_id = ${userId} ORDER BY created_at`;
+    const rows = await sql`SELECT id, sender_id as "senderId", receiver_id as "receiverId", text, attachment, read, created_at as "createdAt" FROM private_messages WHERE sender_id = ${userId} OR receiver_id = ${userId} ORDER BY created_at`;
     return rows.map((m: any) => ({ ...m, createdAt: m.createdAt || m.created_at }));
   }
   const messages = readJson(MESSAGES_FILE, []);
