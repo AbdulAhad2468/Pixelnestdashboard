@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 interface PrivateMessage {
   id: string;
@@ -17,7 +18,7 @@ interface User {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: "super_admin" | "member";
   online?: boolean;
 }
 
@@ -32,26 +33,37 @@ export default function PrivateChat() {
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const usersRef = useRef<User[]>([]);
 
   // Fetch users and all messages
   useEffect(() => {
     const fetchUsers = async () => {
       try {
+        setError(null);
         const response = await fetch("/api/users");
         if (response.ok) {
           const data = await response.json();
+          // Filter out current user and ensure users have valid profiles
+          const validUsers = data.filter((u: User) => u.id !== user?.id && u.name && u.email);
           // Simulate online status (in real app, this would come from WebSocket)
-          const usersWithStatus = data.map((u: User) => ({
+          const usersWithStatus = validUsers.map((u: User) => ({
             ...u,
             online: Math.random() > 0.3 // 70% chance of being online
           }));
           setUsers(usersWithStatus);
           usersRef.current = usersWithStatus;
           setOnlineUsers(new Set(usersWithStatus.filter((u: User) => u.online).map((u: User) => u.id)));
+        } else {
+          setError("Failed to load users");
         }
       } catch (error) {
         console.error("Failed to fetch users:", error);
+        setError("Failed to load users");
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -70,26 +82,22 @@ export default function PrivateChat() {
 
     fetchUsers();
     fetchAllMessages();
-    
-    // Poll for messages and update online status
-    const interval = setInterval(() => {
-      fetchAllMessages();
-      // Randomly update online status to simulate real-time
-      setOnlineUsers(prev => {
-        const newSet = new Set(prev);
-        usersRef.current.forEach(u => {
-          if (Math.random() > 0.95) { // 5% chance to change status
-            if (newSet.has(u.id)) {
-              newSet.delete(u.id);
-            } else {
-              newSet.add(u.id);
-            }
-          }
-        });
-        return newSet;
-      });
-    }, 3000);
-    return () => clearInterval(interval);
+
+    // Subscribe to private messages for real-time updates
+    const channel = supabase
+      .channel('private-messages')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'private_messages'
+      }, () => {
+        fetchAllMessages();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   // Fetch messages when user is selected
@@ -107,6 +115,20 @@ export default function PrivateChat() {
               (msg.senderId === selectedUser.id && msg.receiverId === user.id)
           );
           setMessages(conversationMessages);
+
+          // Mark unread messages from the selected user as read
+          const unreadMessages = conversationMessages.filter(
+            (msg: PrivateMessage) => msg.senderId === selectedUser.id && !msg.read
+          );
+          unreadMessages.forEach(async (msg: PrivateMessage) => {
+            try {
+              await fetch(`/api/messages/${msg.id}/read`, {
+                method: "PUT",
+              });
+            } catch (error) {
+              console.error("Failed to mark message as read:", error);
+            }
+          });
         }
       } catch (error) {
         console.error("Failed to fetch messages:", error);
@@ -120,7 +142,18 @@ export default function PrivateChat() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() && !selectedFile || !user || !selectedUser) return;
+    if (!message.trim() && !selectedFile) return;
+    if (!user?.id) {
+      setError("You must be logged in to send messages");
+      return;
+    }
+    if (!selectedUser?.id) {
+      setError("No user selected");
+      return;
+    }
+
+    setSending(true);
+    setError(null);
 
     try {
       let attachment = null;
@@ -158,9 +191,15 @@ export default function PrivateChat() {
           );
           setMessages(conversationMessages);
         }
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || "Failed to send message");
       }
     } catch (error) {
       console.error("Failed to send message:", error);
+      setError("Failed to send message");
+    } finally {
+      setSending(false);
     }
   };
 
@@ -228,6 +267,17 @@ export default function PrivateChat() {
         <h3 className="text-white font-semibold mb-5 flex items-center text-lg">
           <span className="mr-2">💬</span> <span className="hidden md:inline">Direct Messages</span>
         </h3>
+        {error && (
+          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm">
+            {error}
+            <button
+              onClick={() => setError(null)}
+              className="ml-2 text-red-400 hover:text-red-300"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <input
           type="text"
           value={searchTerm}
@@ -235,65 +285,71 @@ export default function PrivateChat() {
           placeholder="Search people..."
           className="w-full bg-black/30 border border-blue-500/50 rounded-xl px-5 py-4 text-white placeholder-blue-300/50 focus:outline-none focus:border-blue-400 mb-5 text-lg shadow-inner"
         />
-        <div className="space-y-2 overflow-y-auto flex-1">
-          {filteredUsers.length === 0 ? (
-            <p className="text-blue-300 text-base text-center py-6">No members found</p>
-          ) : (
-            filteredUsers.map((u) => {
-              const unreadCount = getUnreadCount(u.id);
-              const lastMessage = getLastMessage(u.id);
-              const isOnline = onlineUsers.has(u.id);
-              return (
-                <button
-                  key={u.id}
-                  onClick={() => {
-                    setSelectedUser(u);
-                    setSidebarOpen(false);
-                  }}
-                  className={`w-full text-left px-5 py-4 rounded-xl transition-colors group active:scale-98 ${
-                    selectedUser?.id === u.id
-                      ? "bg-blue-600 text-white shadow-lg"
-                      : "text-blue-300 hover:bg-blue-900/50 active:bg-blue-900/70"
-                  }`}
-                >
-                  <div className="flex items-center space-x-4">
-                    <div className="relative flex-shrink-0">
-                      <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white text-lg font-semibold shadow-lg">
-                        {u.name[0]}
-                      </div>
-                      {isOnline && (
-                        <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-black/50 shadow-md"></div>
-                      )}
-                      {unreadCount > 0 && (
-                        <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-7 h-7 flex items-center justify-center font-bold shadow-lg">
-                          {unreadCount > 9 ? '9+' : unreadCount}
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-blue-300">Loading users...</div>
+          </div>
+        ) : (
+          <div className="space-y-2 overflow-y-auto flex-1">
+            {filteredUsers.length === 0 ? (
+              <p className="text-blue-300 text-base text-center py-6">No members found</p>
+            ) : (
+              filteredUsers.map((u) => {
+                const unreadCount = getUnreadCount(u.id);
+                const lastMessage = getLastMessage(u.id);
+                const isOnline = onlineUsers.has(u.id);
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => {
+                      setSelectedUser(u);
+                      setSidebarOpen(false);
+                    }}
+                    className={`w-full text-left px-5 py-4 rounded-xl transition-colors group active:scale-98 ${
+                      selectedUser?.id === u.id
+                        ? "bg-blue-600 text-white shadow-lg"
+                        : "text-blue-300 hover:bg-blue-900/50 active:bg-blue-900/70"
+                    }`}
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="relative flex-shrink-0">
+                        <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white text-lg font-semibold shadow-lg">
+                          {u.name[0]}
                         </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <div className="font-semibold truncate text-lg">{u.name}</div>
-                        {lastMessage && (
-                          <div className="text-xs opacity-70 flex-shrink-0">
-                            {new Date(lastMessage.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        {isOnline && (
+                          <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-black/50 shadow-md"></div>
+                        )}
+                        {unreadCount > 0 && (
+                          <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-7 h-7 flex items-center justify-center font-bold shadow-lg">
+                            {unreadCount > 9 ? '9+' : unreadCount}
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="text-sm opacity-60 truncate flex-1">
-                          {lastMessage ? lastMessage.text : u.role}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <div className="font-semibold truncate text-lg">{u.name}</div>
+                          {lastMessage && (
+                            <div className="text-xs opacity-70 flex-shrink-0">
+                              {new Date(lastMessage.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </div>
+                          )}
                         </div>
-                        {isOnline && (
-                          <div className="text-sm text-green-400 flex-shrink-0">●</div>
-                        )}
+                        <div className="flex items-center space-x-2">
+                          <div className="text-sm opacity-60 truncate flex-1">
+                            {lastMessage ? lastMessage.text : u.role}
+                          </div>
+                          {isOnline && (
+                            <div className="text-sm text-green-400 flex-shrink-0">●</div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </button>
-              );
-            })
-          )}
-        </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
       </div>
 
       {/* Mobile Sidebar Toggle */}
@@ -380,7 +436,7 @@ export default function PrivateChat() {
                               {isOwn && (
                                 <span>✓✓</span>
                               )}
-                              {(isOwn || user?.role === "admin") && (
+                              {(isOwn || user?.role === "super_admin") && (
                                 <button
                                   onClick={() => handleDeleteMessage(msg.id)}
                                   className="text-red-400 hover:text-red-300 text-xs opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity px-2 py-1 -mx-2 -my-1 active:bg-red-500/20 rounded"
@@ -430,10 +486,10 @@ export default function PrivateChat() {
                   />
                   <button
                     type="submit"
-                    disabled={!message.trim() && !selectedFile}
+                    disabled={sending || (!message.trim() && !selectedFile)}
                     className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed active:bg-blue-800 text-white px-4 py-2 md:px-5 md:py-3 rounded-lg transition-colors text-sm md:text-base flex-shrink-0 font-medium shadow active:scale-95 transition-transform"
                   >
-                    Send
+                    {sending ? 'Sending...' : 'Send'}
                   </button>
                 </div>
               </div>

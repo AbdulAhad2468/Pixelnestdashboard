@@ -10,17 +10,15 @@ export default function Navigation() {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const isApproved = user?.approved !== false;
-
   const navItems = [
     { name: "Pixel Nest", href: "/board" },
     { name: "Channels", href: "/channels" },
     { name: "Direct Messages", href: "/messages" },
   ];
 
-  const visibleNavItems = isApproved ? [...navItems] : [];
+  const visibleNavItems = [...navItems];
 
-  if (user?.role === "admin") {
+  if (user?.role === "super_admin") {
     visibleNavItems.push({ name: "Admin Panel", href: "/admin" });
   }
 

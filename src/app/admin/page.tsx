@@ -11,12 +11,12 @@ export default function AdminPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!user || user.role !== "admin") {
+    if (!user || user.role !== "super_admin") {
       router.push("/");
     }
   }, [user, router]);
 
-  if (!user || user.role !== "admin") {
+  if (!user || user.role !== "super_admin") {
     return null;
   }
 

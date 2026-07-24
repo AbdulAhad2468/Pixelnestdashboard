@@ -19,9 +19,8 @@ interface User {
   id: string;
   name: string;
   email: string;
-  role: string;
-  approved: boolean;
-  createdAt: string;
+  role: "super_admin" | "member";
+  created_at: string;
 }
 
 export default function AdminPanel() {
@@ -33,9 +32,16 @@ export default function AdminPanel() {
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [newColumnName, setNewColumnName] = useState("");
   const [editingColumn, setEditingColumn] = useState<{ id: string; title: string } | null>(null);
-  const [editingUser, setEditingUser] = useState<{ id: string; name: string; email: string; role: string; approved: boolean } | null>(null);
+  const [editingUser, setEditingUser] = useState<{ id: string; name: string; email: string; role: "super_admin" | "member" } | null>(null);
   const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserRole, setNewUserRole] = useState<"super_admin" | "member">("member");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [createUserError, setCreateUserError] = useState("");
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
 
   // Fetch boards
   const fetchBoards = async () => {
@@ -56,7 +62,10 @@ export default function AdminPanel() {
       const response = await fetch("/api/users");
       if (response.ok) {
         const data = await response.json();
+        console.log("Fetched users:", data);
         setUsers(data);
+      } else {
+        console.error("Failed to fetch users, status:", response.status);
       }
     } catch (error) {
       console.error("Failed to fetch users:", error);
@@ -64,6 +73,7 @@ export default function AdminPanel() {
   };
 
   useEffect(() => {
+    console.log("AdminPanel mounted, fetching data...");
     fetchBoards();
     fetchUsers();
   }, []);
@@ -160,7 +170,7 @@ export default function AdminPanel() {
     }
   };
 
-  const handleEditUser = async (userId: string, userData: { name: string; email: string; role: string; approved: boolean }) => {
+  const handleEditUser = async (userId: string, userData: { name: string; email: string; role: "super_admin" | "member" }) => {
     setSaveError("");
     setIsSaving(true);
     try {
@@ -190,7 +200,7 @@ export default function AdminPanel() {
   };
 
   const isProtectedAdmin = (userItem: User) => {
-    return userItem.name.toLowerCase().includes("pixel nest");
+    return userItem.role === "super_admin";
   };
 
   const handleDeleteUser = async (userId: string) => {
@@ -202,14 +212,62 @@ export default function AdminPanel() {
       });
 
       if (response.ok) {
-        fetchUsers();
+        // Remove user from local state immediately
+        setUsers(users.filter(u => u.id !== userId));
+        // Then fetch fresh data from server
+        await fetchUsers();
+      } else {
+        const errorData = await response.json();
+        alert(errorData.error || "Failed to delete user");
       }
     } catch (error) {
       console.error("Failed to delete user:", error);
+      alert("Failed to delete user. Please try again.");
     }
   };
 
-  if (user?.role !== "admin") {
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateUserError("");
+    setIsCreatingUser(true);
+
+    try {
+      console.log("Creating user with:", { name: newUserName, email: newUserEmail, role: newUserRole });
+      const response = await fetch("/api/admin/create-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newUserName,
+          email: newUserEmail,
+          password: newUserPassword,
+          role: newUserRole,
+        }),
+      });
+
+      const responseData = await response.json();
+      console.log("Create user response:", responseData);
+
+      if (response.ok) {
+        setNewUserName("");
+        setNewUserEmail("");
+        setNewUserPassword("");
+        setNewUserRole("member");
+        setShowCreateUser(false);
+        console.log("User created successfully, fetching users...");
+        fetchUsers();
+      } else {
+        console.error("Create user failed:", responseData);
+        setCreateUserError(responseData.error || "Failed to create user");
+      }
+    } catch (error) {
+      console.error("Failed to create user:", error);
+      setCreateUserError("Failed to create user. Please try again.");
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
+
+  if (user?.role !== "super_admin") {
     return null;
   }
 
@@ -358,6 +416,72 @@ export default function AdminPanel() {
 
       {activeTab === "users" && (
         <div>
+          <button
+            onClick={() => setShowCreateUser(!showCreateUser)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg mb-4 text-sm font-medium transition-colors"
+          >
+            {showCreateUser ? "Cancel" : "+ Create New User"}
+          </button>
+
+          {showCreateUser && (
+            <form onSubmit={handleCreateUser} className="bg-black/50 border border-blue-500/30 rounded-lg p-4 mb-4 space-y-3">
+              <div>
+                <label className="text-blue-300 text-sm block mb-1">Name</label>
+                <input
+                  type="text"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                  required
+                  className="w-full bg-black/30 border border-blue-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-400 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-blue-300 text-sm block mb-1">Email</label>
+                <input
+                  type="email"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  required
+                  className="w-full bg-black/30 border border-blue-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-400 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-blue-300 text-sm block mb-1">Password</label>
+                <input
+                  type="password"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className="w-full bg-black/30 border border-blue-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-400 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-blue-300 text-sm block mb-1">Role</label>
+                <select
+                  value={newUserRole}
+                  onChange={(e) => setNewUserRole(e.target.value as "super_admin" | "member")}
+                  className="w-full bg-black/30 border border-blue-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-400 text-sm"
+                >
+                  <option value="member">Member</option>
+                  <option value="super_admin">Super Admin</option>
+                </select>
+              </div>
+              {createUserError && (
+                <div className="bg-red-500/20 border border-red-500 text-red-200 px-3 py-2 rounded-lg text-sm">
+                  {createUserError}
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={isCreatingUser}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors text-sm"
+              >
+                {isCreatingUser ? "Creating..." : "Create User"}
+              </button>
+            </form>
+          )}
+
           <div className="space-y-3">
             {users.map((userItem) => (
               <div
@@ -385,24 +509,15 @@ export default function AdminPanel() {
                       />
                     </div>
                     <div>
-                      <label className="text-blue-300 text-sm block mb-1">Role / Category</label>
-                      <input
-                        type="text"
+                      <label className="text-blue-300 text-sm block mb-1">Role</label>
+                      <select
                         value={editingUser.role}
-                        onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
-                        placeholder="Enter role or category name"
-                        className="w-full bg-black/30 border border-blue-500/50 rounded-lg px-3 py-2 text-white placeholder-blue-300/50 focus:outline-none focus:border-blue-400 text-sm"
-                      />
-                    </div>
-                    <div className="flex items-start space-x-2">
-                      <input
-                        type="checkbox"
-                        id="approved"
-                        checked={editingUser.approved}
-                        onChange={(e) => setEditingUser({ ...editingUser, approved: e.target.checked })}
-                        className="w-4 h-4 rounded border-blue-500/50 mt-0.5"
-                      />
-                      <label htmlFor="approved" className="text-blue-300 text-sm leading-tight">Approved for chat, DMs, and Sprint Board</label>
+                        onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as "super_admin" | "member" })}
+                        className="w-full bg-black/30 border border-blue-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-400 text-sm"
+                      >
+                        <option value="member">Member</option>
+                        <option value="super_admin">Super Admin</option>
+                      </select>
                     </div>
                     {isProtectedAdmin(userItem) && (
                       <div className="text-yellow-400 text-xs bg-yellow-400/10 rounded-lg px-3 py-2">
@@ -439,11 +554,8 @@ export default function AdminPanel() {
                     <div>
                       <div className="text-white font-semibold text-sm md:text-base flex items-center gap-2">
                         {userItem.name}
-                        {!userItem.approved && (
-                          <span className="bg-yellow-500/20 text-yellow-400 text-xs px-2 py-0.5 rounded">Pending</span>
-                        )}
-                        {userItem.role === "admin" && (
-                          <span className="bg-blue-500/20 text-blue-300 text-xs px-2 py-0.5 rounded">Admin</span>
+                        {userItem.role === "super_admin" && (
+                          <span className="bg-blue-500/20 text-blue-300 text-xs px-2 py-0.5 rounded">Super Admin</span>
                         )}
                       </div>
                       <div className="text-blue-300 text-xs md:text-sm">{userItem.email}</div>
@@ -451,7 +563,7 @@ export default function AdminPanel() {
                     </div>
                     <div className="flex items-center space-x-2">
                       <button
-                        onClick={() => setEditingUser({ id: userItem.id, name: userItem.name, email: userItem.email, role: userItem.role, approved: userItem.approved })}
+                        onClick={() => setEditingUser({ id: userItem.id, name: userItem.name, email: userItem.email, role: userItem.role })}
                         className="text-blue-400 hover:text-blue-300 text-sm"
                       >
                         Edit

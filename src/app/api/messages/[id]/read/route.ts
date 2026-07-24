@@ -1,31 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
+import { supabase } from "@/lib/supabase";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const MESSAGES_FILE = path.join(DATA_DIR, "private-messages.json");
+// Validation helper
+function validateUUID(id: any): string | null {
+  if (typeof id !== 'string') return 'ID must be a string';
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) return 'Invalid UUID format';
+  return null;
+}
 
 // PUT mark message as read
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { id } = params;
 
-    if (!fs.existsSync(MESSAGES_FILE)) {
-      return NextResponse.json({ error: "Message not found" }, { status: 404 });
+    const idError = validateUUID(id);
+    if (idError) {
+      return NextResponse.json({ error: idError }, { status: 400 });
     }
 
-    const messages = JSON.parse(fs.readFileSync(MESSAGES_FILE, "utf-8"));
-    const message = messages.find((msg: any) => msg.id === id);
+    const { error } = await supabase
+      .from("private_messages")
+      .update({ read: true })
+      .eq("id", id);
 
-    if (!message) {
-      return NextResponse.json({ error: "Message not found" }, { status: 404 });
-    }
-
-    message.read = true;
-    fs.writeFileSync(MESSAGES_FILE, JSON.stringify(messages, null, 2));
+    if (error) throw error;
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    console.error("Failed to mark message as read:", error);
     return NextResponse.json({ error: "Failed to mark message as read" }, { status: 500 });
   }
 }

@@ -1,22 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUsers } from "@/lib/db";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+// Use service role client to bypass RLS for admin operations
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 // GET all users (for private chat user list)
 export async function GET() {
   try {
-    const users = await getUsers();
+    console.log("Fetching all profiles from database using service role...");
+    const { data: profiles, error } = await supabaseAdmin
+      .from("profiles")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-    // Remove passwords from response and format
-    const usersWithoutPasswords = users.map((user: any) => ({
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      approved: user.approved,
-      createdAt: user.created_at
-    }));
+    if (error) {
+      console.error("Database error fetching profiles:", error);
+      throw error;
+    }
 
-    return NextResponse.json(usersWithoutPasswords);
+    console.log("Fetched profiles count:", profiles?.length);
+    console.log("Fetched profiles:", profiles);
+
+    return NextResponse.json(profiles);
   } catch (error) {
     console.error("Failed to fetch users:", error);
     return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 });

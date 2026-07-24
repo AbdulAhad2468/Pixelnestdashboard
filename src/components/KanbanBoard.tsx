@@ -208,7 +208,7 @@ export default function KanbanBoard() {
   };
 
   const handleAddTask = async (columnId: string) => {
-    if (user?.role !== "admin") return;
+    if (user?.role !== "super_admin") return;
 
     const title = prompt("Enter task title:");
     if (!title) return;
@@ -277,7 +277,7 @@ export default function KanbanBoard() {
   };
 
   const handleCreateBoard = async () => {
-    if (user?.role !== "admin") return;
+    if (user?.role !== "super_admin") return;
     const name = prompt("Enter board name:");
     if (!name) return;
 
@@ -293,6 +293,43 @@ export default function KanbanBoard() {
       }
     } catch (error) {
       console.error("Failed to create board:", error);
+    }
+  };
+
+  const handleAddColumn = async () => {
+    if (user?.role !== "super_admin") return;
+    const title = prompt("Enter column title:");
+    if (!title) return;
+
+    try {
+      const response = await fetch(`/api/boards/${currentBoardId}/columns`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+
+      if (response.ok) {
+        fetchBoard();
+      }
+    } catch (error) {
+      console.error("Failed to add column:", error);
+    }
+  };
+
+  const handleDeleteColumn = async (columnId: string) => {
+    if (user?.role !== "super_admin") return;
+    if (!confirm("Are you sure you want to delete this column and all its tasks?")) return;
+
+    try {
+      const response = await fetch(`/api/boards/${currentBoardId}/columns/${columnId}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        fetchBoard();
+      }
+    } catch (error) {
+      console.error("Failed to delete column:", error);
     }
   };
 
@@ -363,14 +400,24 @@ export default function KanbanBoard() {
               {columns.length} columns · {columns.reduce((acc, col) => acc + col.tasks.length, 0)} tasks
             </p>
           </div>
-          {user?.role === "admin" && (
-            <button
-              onClick={handleCreateBoard}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors active:scale-95"
-            >
-              + New Board
-            </button>
-          )}
+          <div className="flex items-center space-x-3">
+            {user?.role === "super_admin" && (
+              <button
+                onClick={handleAddColumn}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors active:scale-95"
+              >
+                + Add Column
+              </button>
+            )}
+            {user?.role === "super_admin" && (
+              <button
+                onClick={handleCreateBoard}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors active:scale-95"
+              >
+                + New Board
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 overflow-x-auto overflow-y-hidden -mx-4 px-4 md:-mx-6 md:px-6">
@@ -388,13 +435,21 @@ export default function KanbanBoard() {
                 {column.title}
               </h2>
               <div className="flex items-center space-x-2">
-                {user?.role === "admin" && (
-                  <button
-                    onClick={() => handleAddTask(column.id)}
-                    className="text-blue-400 hover:text-blue-300 text-2xl p-3 -m-3 active:scale-95 transition-transform"
-                  >
-                    +
-                  </button>
+                {user?.role === "super_admin" && (
+                  <>
+                    <button
+                      onClick={() => handleAddTask(column.id)}
+                      className="text-blue-400 hover:text-blue-300 text-2xl p-3 -m-3 active:scale-95 transition-transform"
+                    >
+                      +
+                    </button>
+                    <button
+                      onClick={() => handleDeleteColumn(column.id)}
+                      className="text-red-400 hover:text-red-300 text-lg p-3 -m-3 active:scale-95 transition-transform"
+                    >
+                      🗑
+                    </button>
+                  </>
                 )}
                 <span className="bg-blue-600/50 text-white text-sm md:text-sm px-3 md:px-3 py-1.5 rounded-full">
                   {column.tasks.length}
@@ -428,7 +483,7 @@ export default function KanbanBoard() {
                       >
                         {task.priority}
                       </span>
-                      {user?.role === "admin" && (
+                      {user?.role === "super_admin" && (
                         <>
                           <button
                             onClick={() => handleUpdateTask(task.id)}

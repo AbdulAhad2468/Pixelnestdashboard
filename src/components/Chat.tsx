@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 interface Message {
   id: string;
   text: string;
-  sender: string;
+  senderId: string;
   timestamp: string;
   attachment?: string;
 }
@@ -21,8 +22,7 @@ interface User {
   id: string;
   name: string;
   email: string;
-  role: string;
-  approved: boolean;
+  role: "super_admin" | "member";
 }
 
 export default function Chat() {
@@ -33,19 +33,28 @@ export default function Chat() {
   const [message, setMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const activeChannelData = channels.find((c) => c.id === activeChannel);
 
   // Fetch channels
   const fetchChannels = async () => {
     try {
+      setError(null);
       const response = await fetch("/api/channels");
       if (response.ok) {
         const data = await response.json();
         setChannels(data);
+      } else {
+        setError("Failed to load channels");
       }
     } catch (error) {
       console.error("Failed to fetch channels:", error);
+      setError("Failed to load channels");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -65,13 +74,35 @@ export default function Chat() {
   useEffect(() => {
     fetchChannels();
     fetchUsers();
-    const interval = setInterval(fetchChannels, 3000); // Poll every 3 seconds
-    return () => clearInterval(interval);
+
+    // Subscribe to channel messages for real-time updates
+    const channel = supabase
+      .channel('channel-messages')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'channel_messages'
+      }, () => {
+        fetchChannels();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() && !selectedFile || !activeChannel) return;
+    if (!message.trim() && !selectedFile) return;
+    if (!activeChannel) return;
+    if (!user?.id) {
+      setError("You must be logged in to send messages");
+      return;
+    }
+
+    setSending(true);
+    setError(null);
 
     try {
       let attachment = null;
@@ -87,10 +118,10 @@ export default function Chat() {
       const response = await fetch(`/api/channels/${activeChannel}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          text: message, 
-          sender: user?.name || "Anonymous",
-          attachment 
+        body: JSON.stringify({
+          text: message,
+          senderId: user.id,
+          attachment
         }),
       });
 
@@ -98,9 +129,15 @@ export default function Chat() {
         setMessage("");
         setSelectedFile(null);
         fetchChannels(); // Refresh messages
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || "Failed to send message");
       }
     } catch (error) {
       console.error("Failed to send message:", error);
+      setError("Failed to send message");
+    } finally {
+      setSending(false);
     }
   };
 
@@ -120,6 +157,29 @@ export default function Chat() {
       }
     } catch (error) {
       console.error("Failed to create channel:", error);
+    }
+  };
+
+  const handleDeleteChannel = async (channelId: string) => {
+    if (!confirm("Are you sure you want to delete this channel? All messages will be lost.")) return;
+
+    try {
+      const response = await fetch("/api/channels", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: channelId }),
+      });
+
+      if (response.ok) {
+        // If the deleted channel was active, switch to the first available channel
+        if (activeChannel === channelId) {
+          const remainingChannels = channels.filter(c => c.id !== channelId);
+          setActiveChannel(remainingChannels.length > 0 ? remainingChannels[0].id : "");
+        }
+        fetchChannels();
+      }
+    } catch (error) {
+      console.error("Failed to delete channel:", error);
     }
   };
 
@@ -152,29 +212,43 @@ export default function Chat() {
       <div className={`${sidebarOpen ? 'w-80 translate-x-0' : 'w-0 -translate-x-full'} md:w-64 md:translate-x-0 bg-black/95 md:bg-black/50 border-r border-blue-500/30 p-5 md:p-4 transition-all duration-300 overflow-hidden absolute md:relative z-20 h-full`}>
         <div className="flex items-center justify-between mb-5">
           <span className="text-white font-semibold text-lg hidden md:block">Channels</span>
-          <button
-            onClick={handleCreateChannel}
-            className="text-blue-400 hover:text-blue-300 text-3xl p-3 -m-3 active:scale-95 transition-transform"
-          >
-            +
-          </button>
+          {user?.role === "super_admin" && (
+            <button
+              onClick={handleCreateChannel}
+              className="text-blue-400 hover:text-blue-300 text-3xl p-3 -m-3 active:scale-95 transition-transform"
+            >
+              +
+            </button>
+          )}
         </div>
         <div className="space-y-2">
           {channels.map((channel) => (
-            <button
+            <div
               key={channel.id}
-              onClick={() => {
-                setActiveChannel(channel.id);
-                setSidebarOpen(false);
-              }}
-              className={`w-full text-left px-5 py-4 rounded-xl transition-colors text-lg active:scale-98 ${
+              className={`flex items-center group ${
                 activeChannel === channel.id
                   ? "bg-blue-600 text-white shadow-lg"
                   : "text-blue-300 hover:bg-blue-900/50 active:bg-blue-900/70"
-              }`}
+              } rounded-xl transition-colors`}
             >
-              # {channel.name}
-            </button>
+              <button
+                onClick={() => {
+                  setActiveChannel(channel.id);
+                  setSidebarOpen(false);
+                }}
+                className="flex-1 text-left px-5 py-4 text-lg active:scale-98"
+              >
+                # {channel.name}
+              </button>
+              {user?.role === "super_admin" && (
+                <button
+                  onClick={() => handleDeleteChannel(channel.id)}
+                  className="text-red-400 hover:text-red-300 px-3 py-4 opacity-0 group-hover:opacity-100 transition-opacity active:bg-red-500/20 rounded-r-xl"
+                >
+                  🗑️
+                </button>
+              )}
+            </div>
           ))}
         </div>
       </div>
@@ -191,59 +265,81 @@ export default function Chat() {
       <div className="flex-1 flex flex-col min-w-0 h-full">
         <div className="p-3 md:p-4 border-b border-blue-500/30 flex items-center justify-between bg-black/20 flex-shrink-0">
           <h2 className="text-white font-semibold text-base md:text-base">#{activeChannelData?.name}</h2>
-          <button
-            onClick={handleCreateChannel}
-            className="md:hidden text-blue-400 hover:text-blue-300 text-xl p-2 -m-2 active:scale-95 transition-transform"
-          >
-            +
-          </button>
+          {user?.role === "super_admin" && (
+            <button
+              onClick={handleCreateChannel}
+              className="text-blue-400 hover:text-blue-300 text-xl p-2 -m-2 active:scale-95 transition-transform"
+            >
+              +
+            </button>
+          )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3">
-          {activeChannelData?.messages.map((msg) => {
-            const userRole = getUserRole(msg.sender);
-            return (
-              <div key={msg.id} className="flex items-start space-x-3 md:space-x-3 group">
-                <div className="w-8 h-8 md:w-8 md:h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm md:text-sm font-semibold flex-shrink-0">
-                  {msg.sender[0]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2 flex-wrap">
-                    <span className="text-white font-semibold text-sm md:text-sm">{msg.sender}</span>
-                    {userRole && (
-                      <span className="bg-blue-500/20 text-blue-300 text-xs md:text-xs px-2 py-0.5 rounded">
-                        {userRole}
-                      </span>
-                    )}
-                    <span className="text-blue-300 text-xs md:text-xs">
-                      {new Date(msg.timestamp).toLocaleTimeString()}
-                    </span>
-                    {(msg.sender === user?.name || user?.role === "admin") && (
-                      <button
-                        onClick={() => handleDeleteMessage(msg.id)}
-                        className="text-red-400 hover:text-red-300 text-xs md:text-xs opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity px-2 py-1 -mx-2 -my-1 active:bg-red-500/20 rounded"
-                      >
-                        Delete
-                      </button>
-                    )}
+        {error && (
+          <div className="mx-3 md:mx-4 mt-3 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm">
+            {error}
+            <button
+              onClick={() => setError(null)}
+              className="ml-2 text-red-400 hover:text-red-300"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-blue-300">Loading channels...</div>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3">
+            {activeChannelData?.messages.map((msg) => {
+              const senderUser = users.find(u => u.id === msg.senderId);
+              const senderName = senderUser?.name || "Unknown";
+              const userRole = getUserRole(senderName);
+              return (
+                <div key={msg.id} className="flex items-start space-x-3 md:space-x-3 group">
+                  <div className="w-8 h-8 md:w-8 md:h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm md:text-sm font-semibold flex-shrink-0">
+                    {senderName[0]}
                   </div>
-                  <p className="text-blue-100 break-words text-sm md:text-sm leading-relaxed">{msg.text}</p>
-                  {msg.attachment && (
-                    <div className="mt-2">
-                      {msg.attachment.startsWith('data:image') ? (
-                        <img src={msg.attachment} alt="Attachment" className="max-w-full h-auto rounded-lg max-h-48 md:max-h-64" />
-                      ) : (
-                        <a href={msg.attachment} download className="text-blue-400 hover:text-blue-300 text-sm md:text-sm underline inline-flex items-center gap-2 py-1">
-                          📎 Download attachment
-                        </a>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-2 flex-wrap">
+                      <span className="text-white font-semibold text-sm md:text-sm">{senderName}</span>
+                      {userRole && (
+                        <span className="bg-blue-500/20 text-blue-300 text-xs md:text-xs px-2 py-0.5 rounded">
+                          {userRole}
+                        </span>
+                      )}
+                      <span className="text-blue-300 text-xs md:text-xs">
+                        {new Date(msg.timestamp).toLocaleTimeString()}
+                      </span>
+                      {(msg.senderId === user?.id || user?.role === "super_admin") && (
+                        <button
+                          onClick={() => handleDeleteMessage(msg.id)}
+                          className="text-red-400 hover:text-red-300 text-xs md:text-xs opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity px-2 py-1 -mx-2 -my-1 active:bg-red-500/20 rounded"
+                        >
+                          Delete
+                        </button>
                       )}
                     </div>
-                  )}
+                    <p className="text-blue-100 break-words text-sm md:text-sm leading-relaxed">{msg.text}</p>
+                    {msg.attachment && (
+                      <div className="mt-2">
+                        {msg.attachment.startsWith('data:image') ? (
+                          <img src={msg.attachment} alt="Attachment" className="max-w-full h-auto rounded-lg max-h-48 md:max-h-64" />
+                        ) : (
+                          <a href={msg.attachment} download className="text-blue-400 hover:text-blue-300 text-sm md:text-sm underline inline-flex items-center gap-2 py-1">
+                            📎 Download attachment
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
         <form onSubmit={handleSendMessage} className="p-2 md:p-4 border-t border-blue-500/30 bg-black/20 flex-shrink-0">
           <div className="flex flex-col space-y-2 md:space-y-3">
@@ -277,9 +373,10 @@ export default function Chat() {
               />
               <button
                 type="submit"
-                className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-2 md:px-5 md:py-3 rounded-lg transition-colors text-sm md:text-base flex-shrink-0 font-medium shadow active:scale-95 transition-transform"
+                disabled={sending || (!message.trim() && !selectedFile)}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed active:bg-blue-800 text-white px-4 py-2 md:px-5 md:py-3 rounded-lg transition-colors text-sm md:text-base flex-shrink-0 font-medium shadow active:scale-95 transition-transform"
               >
-                Send
+                {sending ? 'Sending...' : 'Send'}
               </button>
             </div>
           </div>

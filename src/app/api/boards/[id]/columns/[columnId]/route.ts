@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const BOARDS_FILE = path.join(DATA_DIR, "boards.json");
+import { supabase } from "@/lib/supabase";
 
 // PUT - Edit column
 export async function PUT(
@@ -17,30 +13,22 @@ export async function PUT(
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
 
-    if (!fs.existsSync(BOARDS_FILE)) {
-      return NextResponse.json({ error: "Boards file not found" }, { status: 404 });
-    }
+    const { data: column, error } = await supabase
+      .from("columns")
+      .update({ title })
+      .eq("id", params.columnId)
+      .select()
+      .single();
 
-    const boards = JSON.parse(fs.readFileSync(BOARDS_FILE, "utf-8"));
-    const boardIndex = boards.findIndex((b: any) => b.id === params.id);
+    if (error) throw error;
 
-    if (boardIndex === -1) {
-      return NextResponse.json({ error: "Board not found" }, { status: 404 });
-    }
-
-    const columnIndex = boards[boardIndex].columns.findIndex(
-      (c: any) => c.id === params.columnId
-    );
-
-    if (columnIndex === -1) {
-      return NextResponse.json({ error: "Column not found" }, { status: 404 });
-    }
-
-    boards[boardIndex].columns[columnIndex].title = title;
-    fs.writeFileSync(BOARDS_FILE, JSON.stringify(boards, null, 2));
-
-    return NextResponse.json(boards[boardIndex].columns[columnIndex]);
+    return NextResponse.json({
+      id: column.id,
+      title: column.title,
+      tasks: []
+    });
   } catch (error) {
+    console.error("Failed to edit column:", error);
     return NextResponse.json({ error: "Failed to edit column" }, { status: 500 });
   }
 }
@@ -51,30 +39,16 @@ export async function DELETE(
   { params }: { params: { id: string; columnId: string } }
 ) {
   try {
-    if (!fs.existsSync(BOARDS_FILE)) {
-      return NextResponse.json({ error: "Boards file not found" }, { status: 404 });
-    }
+    const { error } = await supabase
+      .from("columns")
+      .delete()
+      .eq("id", params.columnId);
 
-    const boards = JSON.parse(fs.readFileSync(BOARDS_FILE, "utf-8"));
-    const boardIndex = boards.findIndex((b: any) => b.id === params.id);
-
-    if (boardIndex === -1) {
-      return NextResponse.json({ error: "Board not found" }, { status: 404 });
-    }
-
-    const columnIndex = boards[boardIndex].columns.findIndex(
-      (c: any) => c.id === params.columnId
-    );
-
-    if (columnIndex === -1) {
-      return NextResponse.json({ error: "Column not found" }, { status: 404 });
-    }
-
-    boards[boardIndex].columns.splice(columnIndex, 1);
-    fs.writeFileSync(BOARDS_FILE, JSON.stringify(boards, null, 2));
+    if (error) throw error;
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    console.error("Failed to delete column:", error);
     return NextResponse.json({ error: "Failed to delete column" }, { status: 500 });
   }
 }

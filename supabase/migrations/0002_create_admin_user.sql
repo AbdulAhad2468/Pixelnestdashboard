@@ -1,0 +1,4 @@
+-- NOTE: This migration file is deprecated.
+-- Direct SQL insertion into auth.users doesn't work properly for Supabase Auth.
+-- Use the create-admin-user.js script instead to create the admin user via the Auth API.
+-- Run: node supabase/create-admin-user.js

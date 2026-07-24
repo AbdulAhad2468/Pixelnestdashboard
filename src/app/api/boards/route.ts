@@ -1,18 +1,62 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBoards, createBoard, getColumns, createColumn, getTasks } from "@/lib/db";
+import { supabase } from "@/lib/supabase";
 
 // GET all boards
 export async function GET() {
   try {
-    const boards = await getBoards();
-    
+    const { data: boards, error: boardsError } = await supabase
+      .from("boards")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (boardsError) {
+      console.error("Supabase boards error:", boardsError);
+      return NextResponse.json({ error: boardsError.message || "Failed to fetch boards" }, { status: 500 });
+    }
+
+    // If no boards exist, return empty array
+    if (!boards || boards.length === 0) {
+      return NextResponse.json([]);
+    }
+
     // Fetch columns and tasks for each board
     const boardsWithColumns = await Promise.all(
       boards.map(async (board: any) => {
-        const columns = await getColumns(board.id);
+        const { data: columns, error: columnsError } = await supabase
+          .from("columns")
+          .select("*")
+          .eq("board_id", board.id)
+          .order("created_at", { ascending: true });
+
+        if (columnsError) {
+          console.error("Supabase columns error for board", board.id, ":", columnsError);
+          // Return board without columns if fetch fails
+          return {
+            id: board.id,
+            name: board.name,
+            createdAt: board.created_at,
+            columns: []
+          };
+        }
+
         const columnsWithTasks = await Promise.all(
           columns.map(async (col: any) => {
-            const tasks = await getTasks(col.id);
+            const { data: tasks, error: tasksError } = await supabase
+              .from("tasks")
+              .select("*")
+              .eq("column_id", col.id)
+              .order("created_at", { ascending: true });
+
+            if (tasksError) {
+              console.error("Supabase tasks error for column", col.id, ":", tasksError);
+              // Return column without tasks if fetch fails
+              return {
+                id: col.id,
+                title: col.title,
+                tasks: []
+              };
+            }
+
             return {
               id: col.id,
               title: col.title,
@@ -21,22 +65,27 @@ export async function GET() {
                 title: task.title,
                 description: task.description,
                 priority: task.priority,
-                dueDate: task.due_date
+                dueDate: task.due_date,
+                createdAt: task.created_at,
+                updatedAt: task.updated_at
               }))
             };
           })
         );
+
         return {
-          ...board,
+          id: board.id,
+          name: board.name,
+          createdAt: board.created_at,
           columns: columnsWithTasks
         };
       })
     );
-    
+
     return NextResponse.json(boardsWithColumns);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Failed to fetch boards:", error);
-    return NextResponse.json({ error: "Failed to fetch boards" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Failed to fetch boards" }, { status: 500 });
   }
 }
 
@@ -50,27 +99,34 @@ export async function POST(request: NextRequest) {
     }
 
     // Create new board
-    const newBoard = {
-      id: Date.now().toString(),
-      name,
-      createdAt: new Date().toISOString(),
-    };
+    const { data: board, error: boardError } = await supabase
+      .from("boards")
+      .insert({ name })
+      .select()
+      .single();
 
-    const createdBoard = await createBoard(newBoard);
+    if (boardError) throw boardError;
 
     // Create default columns
     const defaultColumns = [
-      { id: `${createdBoard.id}_todo`, boardId: createdBoard.id, title: "To Do" },
-      { id: `${createdBoard.id}_in-progress`, boardId: createdBoard.id, title: "In Progress" },
-      { id: `${createdBoard.id}_review`, boardId: createdBoard.id, title: "Review" },
-      { id: `${createdBoard.id}_done`, boardId: createdBoard.id, title: "Done" },
+      { board_id: board.id, title: "To Do" },
+      { board_id: board.id, title: "In Progress" },
+      { board_id: board.id, title: "Review" },
+      { board_id: board.id, title: "Done" },
     ];
 
-    await Promise.all(defaultColumns.map(createColumn));
+    const { data: columns, error: columnsError } = await supabase
+      .from("columns")
+      .insert(defaultColumns)
+      .select();
+
+    if (columnsError) throw columnsError;
 
     return NextResponse.json({
-      ...createdBoard,
-      columns: defaultColumns.map(col => ({
+      id: board.id,
+      name: board.name,
+      createdAt: board.created_at,
+      columns: columns.map(col => ({
         id: col.id,
         title: col.title,
         tasks: []
