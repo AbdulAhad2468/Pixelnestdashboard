@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserById, updateUser } from "@/lib/db";
-import { sql } from '@vercel/postgres';
+import { getUserById, updateUser, deleteUser } from "@/lib/db";
 
 // PUT - Edit user
 export async function PUT(
@@ -61,7 +60,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Cannot delete protected admin user" }, { status: 403 });
     }
 
-    await sql`DELETE FROM users WHERE id = ${params.id}`;
+    await deleteUser(params.id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Failed to delete user:", error);

@@ -211,6 +211,17 @@ export async function updateUser(id: string, updates: any) {
   return null;
 }
 
+export async function deleteUser(id: string) {
+  if (isPostgres()) {
+    const sql = await getSql();
+    await sql`DELETE FROM users WHERE id = ${id}`;
+    return;
+  }
+  const users = readJson(USERS_FILE, DEFAULT_USERS);
+  const filtered = users.filter((u: any) => u.id !== id);
+  writeJson(USERS_FILE, filtered);
+}
+
 export async function getBoards() {
   if (isPostgres()) {
     const sql = await getSql();
