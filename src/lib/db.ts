@@ -1,6 +1,14 @@
 import fs from "fs";
 import path from "path";
-import { sql } from "@vercel/postgres";
+
+let _sql: any = null;
+async function getSql() {
+  if (!_sql) {
+    const { sql } = await import("@vercel/postgres");
+    _sql = sql;
+  }
+  return _sql;
+}
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
@@ -12,139 +20,151 @@ function isPostgres() {
   return !!process.env.POSTGRES_URL || !!process.env.DATABASE_URL;
 }
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
 function readJson(file: string, defaultValue: any = []) {
-  ensureDataDir();
-  if (!fs.existsSync(file)) {
-    writeJson(file, defaultValue);
-    return defaultValue;
-  }
   try {
-    return JSON.parse(fs.readFileSync(file, "utf-8"));
-  } catch {
-    return defaultValue;
+    if (fs.existsSync(file)) {
+      const data = JSON.parse(fs.readFileSync(file, "utf-8"));
+      return data;
+    }
+  } catch (error) {
+    console.error(`Failed to read ${file}:`, error);
   }
+  return JSON.parse(JSON.stringify(defaultValue));
 }
 
 function writeJson(file: string, data: any) {
-  ensureDataDir();
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error(`Failed to write ${file} (read-only filesystem is expected in Vercel):`, error);
+  }
 }
+
+const DEFAULT_USERS = [
+  {
+    id: "1784658184837",
+    email: "abdulahad2086907@gmail.com",
+    password: "020711",
+    name: "Abdul Ahad",
+    role: "admin",
+    createdAt: new Date().toISOString(),
+    approved: true
+  },
+  {
+    id: "1784713396157",
+    email: "pixelnestagcy@gmail.com",
+    password: "Jontipixel2024",
+    name: "Pixel Nest",
+    role: "admin",
+    createdAt: new Date().toISOString(),
+    approved: true
+  },
+  {
+    id: "1784809473910",
+    email: "admin123@owner.com",
+    password: "Jontigrid2024*",
+    name: "Development",
+    role: "admin",
+    approved: true,
+    createdAt: new Date().toISOString()
+  }
+];
+
+const DEFAULT_BOARDS = [
+  {
+    id: "1",
+    name: "Sprint Board",
+    columns: [
+      { id: "todo", title: "To Do", tasks: [] },
+      { id: "in-progress", title: "In Progress", tasks: [] },
+      { id: "review", title: "Review", tasks: [] },
+      { id: "done", title: "Done", tasks: [] }
+    ]
+  }
+];
+
+const DEFAULT_CHANNELS = [
+  { id: "general", name: "general", messages: [] },
+  { id: "random", name: "random", messages: [] }
+];
 
 function initDefaultUsers() {
   const users = readJson(USERS_FILE, []);
   if (users.length === 0) {
-    writeJson(USERS_FILE, [
-      {
-        id: "1784658184837",
-        email: "abdulahad2086907@gmail.com",
-        password: "020711",
-        name: "Abdul Ahad",
-        role: "admin",
-        createdAt: new Date().toISOString(),
-        approved: true
-      },
-      {
-        id: "1784713396157",
-        email: "pixelnestagcy@gmail.com",
-        password: "Jontipixel2024.",
-        name: "Pixel Nest",
-        role: "admin",
-        createdAt: new Date().toISOString(),
-        approved: true
-      },
-      {
-        id: "1784809473910",
-        email: "admin123@owner.com",
-        password: "Jontigrid2024*",
-        name: "Development",
-        role: "admin",
-        approved: true,
-        createdAt: new Date().toISOString()
-      }
-    ]);
+    writeJson(USERS_FILE, DEFAULT_USERS);
   }
 }
 
 function initDefaultBoards() {
   const boards = readJson(BOARDS_FILE, []);
   if (boards.length === 0) {
-    writeJson(BOARDS_FILE, [
-      {
-        id: "1",
-        name: "Sprint Board",
-        columns: [
-          { id: "todo", title: "To Do", tasks: [] },
-          { id: "in-progress", title: "In Progress", tasks: [] },
-          { id: "review", title: "Review", tasks: [] },
-          { id: "done", title: "Done", tasks: [] }
-        ]
-      }
-    ]);
+    writeJson(BOARDS_FILE, DEFAULT_BOARDS);
   }
 }
 
 function initDefaultChannels() {
   const channels = readJson(CHANNELS_FILE, []);
   if (channels.length === 0) {
-    writeJson(CHANNELS_FILE, [
-      { id: "general", name: "general", messages: [] },
-      { id: "random", name: "random", messages: [] }
-    ]);
+    writeJson(CHANNELS_FILE, DEFAULT_CHANNELS);
   }
 }
 
 function initAll() {
-  initDefaultUsers();
-  initDefaultBoards();
-  initDefaultChannels();
-  readJson(MESSAGES_FILE, []);
+  try {
+    initDefaultUsers();
+    initDefaultBoards();
+    initDefaultChannels();
+  } catch (error) {
+    console.error("Init defaults failed (expected in read-only deployments):", error);
+  }
 }
 
 initAll();
 
 export async function getUsers() {
   if (isPostgres()) {
+    const sql = await getSql();
     const { rows } = await sql`SELECT id, email, password, name, role, approved, created_at as "createdAt" FROM users`;
     return rows.map((u: any) => ({ ...u, createdAt: u.createdAt || u.created_at }));
   }
-  return readJson(USERS_FILE, []);
+  return readJson(USERS_FILE, DEFAULT_USERS);
 }
 
 export async function getUserByEmail(email: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     const { rows } = await sql`SELECT id, email, password, name, role, approved, created_at as "createdAt" FROM users WHERE email = ${email}`;
     const u = rows[0];
     if (u) u.createdAt = u.createdAt || u.created_at;
     return u;
   }
-  const users = readJson(USERS_FILE, []);
+  const users = readJson(USERS_FILE, DEFAULT_USERS);
   return users.find((u: any) => u.email === email);
 }
 
 export async function getUserById(id: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     const { rows } = await sql`SELECT id, email, password, name, role, approved, created_at as "createdAt" FROM users WHERE id = ${id}`;
     const u = rows[0];
     if (u) u.createdAt = u.createdAt || u.created_at;
     return u;
   }
-  const users = readJson(USERS_FILE, []);
+  const users = readJson(USERS_FILE, DEFAULT_USERS);
   return users.find((u: any) => u.id === id);
 }
 
 export async function createUser(user: any) {
   if (isPostgres()) {
+    const sql = await getSql();
     const createdAt = user.createdAt || new Date().toISOString();
     await sql`INSERT INTO users (id, email, password, name, role, approved, created_at) VALUES (${user.id}, ${user.email}, ${user.password}, ${user.name}, ${user.role || 'member'}, ${user.approved || false}, ${createdAt})`;
     return { ...user, createdAt };
   }
-  const users = readJson(USERS_FILE, []);
+  const users = readJson(USERS_FILE, DEFAULT_USERS);
   users.push(user);
   writeJson(USERS_FILE, users);
   return user;
@@ -152,6 +172,7 @@ export async function createUser(user: any) {
 
 export async function updateUser(id: string, updates: any) {
   if (isPostgres()) {
+    const sql = await getSql();
     const sets: string[] = [];
     const values: any[] = [];
     let i = 1;
@@ -169,7 +190,7 @@ export async function updateUser(id: string, updates: any) {
     if (u) u.createdAt = u.createdAt || u.created_at;
     return u || null;
   }
-  const users = readJson(USERS_FILE, []);
+  const users = readJson(USERS_FILE, DEFAULT_USERS);
   const index = users.findIndex((u: any) => u.id === id);
   if (index !== -1) {
     users[index] = { ...users[index], ...updates };
@@ -181,6 +202,7 @@ export async function updateUser(id: string, updates: any) {
 
 export async function getBoards() {
   if (isPostgres()) {
+    const sql = await getSql();
     const { rows: boardRows } = await sql`SELECT id, name, created_at as "createdAt" FROM boards`;
     const { rows: columnRows } = await sql`SELECT id, board_id as "boardId", title FROM columns`;
     const { rows: taskRows } = await sql`SELECT id, column_id as "columnId", title, description, priority, due_date as "dueDate", created_at as "createdAt", updated_at as "updatedAt" FROM tasks`;
@@ -192,20 +214,22 @@ export async function getBoards() {
       }))
     }));
   }
-  return readJson(BOARDS_FILE, []);
+  return readJson(BOARDS_FILE, DEFAULT_BOARDS);
 }
 
 export async function getBoardById(id: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     const boards = await getBoards();
     return boards.find((b: any) => b.id === id);
   }
-  const boards = readJson(BOARDS_FILE, []);
+  const boards = readJson(BOARDS_FILE, DEFAULT_BOARDS);
   return boards.find((b: any) => b.id === id);
 }
 
 export async function createBoard(board: any) {
   if (isPostgres()) {
+    const sql = await getSql();
     const createdAt = board.createdAt || new Date().toISOString();
     await sql`INSERT INTO boards (id, name, created_at) VALUES (${board.id}, ${board.name}, ${createdAt})`;
     if (board.columns && board.columns.length > 0) {
@@ -215,7 +239,7 @@ export async function createBoard(board: any) {
     }
     return { ...board, createdAt, columns: board.columns || [] };
   }
-  const boards = readJson(BOARDS_FILE, []);
+  const boards = readJson(BOARDS_FILE, DEFAULT_BOARDS);
   boards.push({ ...board, columns: [] });
   writeJson(BOARDS_FILE, boards);
   return board;
@@ -223,6 +247,7 @@ export async function createBoard(board: any) {
 
 export async function getColumns(boardId: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     const { rows } = await sql`SELECT id, board_id as "boardId", title FROM columns WHERE board_id = ${boardId}`;
     return rows;
   }
@@ -232,20 +257,22 @@ export async function getColumns(boardId: string) {
 
 export async function deleteBoard(id: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     await sql`DELETE FROM boards WHERE id = ${id}`;
     return;
   }
-  const boards = readJson(BOARDS_FILE, []);
+  const boards = readJson(BOARDS_FILE, DEFAULT_BOARDS);
   const filtered = boards.filter((b: any) => b.id !== id);
   writeJson(BOARDS_FILE, filtered);
 }
 
 export async function createColumn(column: any) {
   if (isPostgres()) {
+    const sql = await getSql();
     await sql`INSERT INTO columns (id, board_id, title) VALUES (${column.id}, ${column.boardId}, ${column.title})`;
     return { ...column, tasks: [] };
   }
-  const boards = readJson(BOARDS_FILE, []);
+  const boards = readJson(BOARDS_FILE, DEFAULT_BOARDS);
   const board = boards.find((b: any) => b.id === column.boardId);
   if (board) {
     board.columns.push({ id: column.id, title: column.title, tasks: [] });
@@ -256,10 +283,11 @@ export async function createColumn(column: any) {
 
 export async function getTasks(columnId: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     const { rows } = await sql`SELECT id, column_id as "columnId", title, description, priority, due_date as "dueDate", created_at as "createdAt", updated_at as "updatedAt" FROM tasks WHERE column_id = ${columnId}`;
     return rows.map((t: any) => ({ ...t, createdAt: t.createdAt || t.created_at, updatedAt: t.updatedAt || t.updated_at }));
   }
-  const boards = readJson(BOARDS_FILE, []);
+  const boards = readJson(BOARDS_FILE, DEFAULT_BOARDS);
   for (const board of boards) {
     for (const column of board.columns) {
       if (column.id === columnId) return column.tasks || [];
@@ -270,11 +298,12 @@ export async function getTasks(columnId: string) {
 
 export async function createTask(task: any) {
   if (isPostgres()) {
+    const sql = await getSql();
     const createdAt = task.createdAt || new Date().toISOString();
     await sql`INSERT INTO tasks (id, column_id, title, description, priority, due_date, created_at, updated_at) VALUES (${task.id}, ${task.columnId}, ${task.title}, ${task.description || ''}, ${task.priority || 'medium'}, ${task.dueDate || null}, ${createdAt}, ${createdAt})`;
     return { ...task, createdAt, updatedAt: createdAt };
   }
-  const boards = readJson(BOARDS_FILE, []);
+  const boards = readJson(BOARDS_FILE, DEFAULT_BOARDS);
   for (const board of boards) {
     for (const column of board.columns) {
       if (column.id === task.columnId) {
@@ -289,6 +318,7 @@ export async function createTask(task: any) {
 
 export async function updateTask(id: string, updates: any) {
   if (isPostgres()) {
+    const sql = await getSql();
     const sets: string[] = [];
     const values: any[] = [];
     let i = 1;
@@ -314,7 +344,7 @@ export async function updateTask(id: string, updates: any) {
     }
     return t || null;
   }
-  const boards = readJson(BOARDS_FILE, []);
+  const boards = readJson(BOARDS_FILE, DEFAULT_BOARDS);
   for (const board of boards) {
     for (const column of board.columns) {
       const task = column.tasks.find((t: any) => t.id === id);
@@ -330,10 +360,11 @@ export async function updateTask(id: string, updates: any) {
 
 export async function deleteTask(id: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     await sql`DELETE FROM tasks WHERE id = ${id}`;
     return;
   }
-  const boards = readJson(BOARDS_FILE, []);
+  const boards = readJson(BOARDS_FILE, DEFAULT_BOARDS);
   for (const board of boards) {
     for (const column of board.columns) {
       const index = column.tasks.findIndex((t: any) => t.id === id);
@@ -348,6 +379,7 @@ export async function deleteTask(id: string) {
 
 export async function moveTask(taskId: string, targetColumnId: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     const now = new Date().toISOString();
     const { rows } = await sql`UPDATE tasks SET column_id = ${targetColumnId}, updated_at = ${now} WHERE id = ${taskId} RETURNING id, column_id as "columnId", title, description, priority, due_date as "dueDate", created_at as "createdAt", updated_at as "updatedAt"`;
     const t = rows[0];
@@ -357,7 +389,7 @@ export async function moveTask(taskId: string, targetColumnId: string) {
     }
     return t || null;
   }
-  const boards = readJson(BOARDS_FILE, []);
+  const boards = readJson(BOARDS_FILE, DEFAULT_BOARDS);
   let task = null;
   for (const board of boards) {
     for (const column of board.columns) {
@@ -385,28 +417,31 @@ export async function moveTask(taskId: string, targetColumnId: string) {
 
 export async function getChannels() {
   if (isPostgres()) {
+    const sql = await getSql();
     const { rows } = await sql`SELECT id, name, created_at as "createdAt" FROM channels`;
     return rows;
   }
-  return readJson(CHANNELS_FILE, []);
+  return readJson(CHANNELS_FILE, DEFAULT_CHANNELS);
 }
 
 export async function getChannelById(id: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     const { rows } = await sql`SELECT id, name, created_at as "createdAt" FROM channels WHERE id = ${id}`;
     return rows[0];
   }
-  const channels = readJson(CHANNELS_FILE, []);
+  const channels = readJson(CHANNELS_FILE, DEFAULT_CHANNELS);
   return channels.find((c: any) => c.id === id);
 }
 
 export async function createChannel(channel: any) {
   if (isPostgres()) {
+    const sql = await getSql();
     const createdAt = channel.createdAt || new Date().toISOString();
     await sql`INSERT INTO channels (id, name, created_at) VALUES (${channel.id}, ${channel.name}, ${createdAt})`;
     return { ...channel, createdAt, messages: [] };
   }
-  const channels = readJson(CHANNELS_FILE, []);
+  const channels = readJson(CHANNELS_FILE, DEFAULT_CHANNELS);
   channels.push({ ...channel, messages: [] });
   writeJson(CHANNELS_FILE, channels);
   return channel;
@@ -414,21 +449,23 @@ export async function createChannel(channel: any) {
 
 export async function getMessages(channelId: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     const { rows } = await sql`SELECT id, channel_id as "channelId", text, sender, attachment, created_at as "createdAt" FROM channel_messages WHERE channel_id = ${channelId} ORDER BY created_at`;
     return rows.map((m: any) => ({ ...m, createdAt: m.createdAt || m.created_at }));
   }
-  const channels = readJson(CHANNELS_FILE, []);
+  const channels = readJson(CHANNELS_FILE, DEFAULT_CHANNELS);
   const channel = channels.find((c: any) => c.id === channelId);
   return channel?.messages || [];
 }
 
 export async function createMessage(message: any) {
   if (isPostgres()) {
+    const sql = await getSql();
     const createdAt = message.timestamp || new Date().toISOString();
     await sql`INSERT INTO channel_messages (id, channel_id, text, sender, attachment, created_at) VALUES (${message.id}, ${message.channelId}, ${message.text}, ${message.sender}, ${message.attachment || null}, ${createdAt})`;
     return { ...message, createdAt };
   }
-  const channels = readJson(CHANNELS_FILE, []);
+  const channels = readJson(CHANNELS_FILE, DEFAULT_CHANNELS);
   const channel = channels.find((c: any) => c.id === message.channelId);
   if (channel) {
     channel.messages.push({
@@ -445,10 +482,11 @@ export async function createMessage(message: any) {
 
 export async function deleteChannelMessage(messageId: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     await sql`DELETE FROM channel_messages WHERE id = ${messageId}`;
     return;
   }
-  const channels = readJson(CHANNELS_FILE, []);
+  const channels = readJson(CHANNELS_FILE, DEFAULT_CHANNELS);
   for (const channel of channels) {
     const index = channel.messages.findIndex((m: any) => m.id === messageId);
     if (index !== -1) {
@@ -461,6 +499,7 @@ export async function deleteChannelMessage(messageId: string) {
 
 export async function getPrivateMessages(userId: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     const { rows } = await sql`SELECT id, sender_id as "senderId", receiver_id as "receiverId", text, attachment, read, created_at as "createdAt" FROM private_messages WHERE sender_id = ${userId} OR receiver_id = ${userId} ORDER BY created_at`;
     return rows.map((m: any) => ({ ...m, createdAt: m.createdAt || m.created_at }));
   }
@@ -470,6 +509,7 @@ export async function getPrivateMessages(userId: string) {
 
 export async function createPrivateMessage(message: any) {
   if (isPostgres()) {
+    const sql = await getSql();
     const createdAt = message.timestamp || new Date().toISOString();
     await sql`INSERT INTO private_messages (id, sender_id, receiver_id, text, attachment, read, created_at) VALUES (${message.id}, ${message.senderId}, ${message.receiverId}, ${message.text}, ${message.attachment || null}, ${message.read || false}, ${createdAt})`;
     return { ...message, createdAt };
@@ -482,6 +522,7 @@ export async function createPrivateMessage(message: any) {
 
 export async function deletePrivateMessage(messageId: string) {
   if (isPostgres()) {
+    const sql = await getSql();
     await sql`DELETE FROM private_messages WHERE id = ${messageId}`;
     return;
   }
