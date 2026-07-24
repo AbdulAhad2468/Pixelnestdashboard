@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { QueryProvider } from "@/lib/react-query";
 
 export const metadata: Metadata = {
   title: "Pixel Nest",
@@ -37,9 +38,11 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="Pixel Nest" />
       </head>
       <body>
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <QueryProvider>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </QueryProvider>
       </body>
     </html>
   );

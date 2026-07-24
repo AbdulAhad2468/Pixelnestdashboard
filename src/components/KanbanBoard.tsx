@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
+import { BoardSkeleton } from "./LoadingSkeleton";
+import BoardModal from "./BoardModal";
+import ColumnModal from "./ColumnModal";
+import TaskModal from "./TaskModal";
 
 interface Task {
   id: string;
@@ -25,33 +31,93 @@ interface Board {
 
 export default function KanbanBoard() {
   const { user } = useAuth();
-  const [boards, setBoards] = useState<Board[]>([]);
-  const [board, setBoard] = useState<Board | null>(null);
-  const [columns, setColumns] = useState<Column[]>([]);
+  const queryClient = useQueryClient();
   const [currentBoardId, setCurrentBoardId] = useState("1");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showBoardModal, setShowBoardModal] = useState(false);
+  const [showColumnModal, setShowColumnModal] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting');
 
-  // Fetch board data
-  const fetchBoard = useCallback(async () => {
-    try {
+  // Fetch board data with React Query
+  const { data: boards = [], isLoading, error } = useQuery({
+    queryKey: ['boards'],
+    queryFn: async () => {
       const response = await fetch("/api/boards");
-      if (response.ok) {
-        const data = await response.json();
-        setBoards(data);
-        const defaultBoard = data.find((b: Board) => b.id === currentBoardId) || data[0];
-        if (defaultBoard) {
-          setBoard(defaultBoard);
-          setColumns(defaultBoard.columns);
-        }
-      }
-    } catch (error) {
-      console.error("Failed to fetch board:", error);
-    }
-  }, [currentBoardId]);
+      if (!response.ok) throw new Error("Failed to fetch boards");
+      return response.json();
+    },
+    staleTime: 0, // Always fresh for real-time
+  });
 
+  const currentBoard = boards.find((b: Board) => b.id === currentBoardId) || boards[0];
+  const columns = currentBoard?.columns || [];
+
+  // Set up real-time subscriptions
   useEffect(() => {
-    fetchBoard();
-  }, [fetchBoard]);
+    setConnectionStatus('connecting');
+
+    // Subscribe to boards changes
+    const boardsChannel = supabase
+      .channel('boards-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'boards'
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ['boards'] });
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus('connected');
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          setConnectionStatus('disconnected');
+        }
+      });
+
+    // Subscribe to columns changes
+    const columnsChannel = supabase
+      .channel('columns-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'columns'
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ['boards'] });
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus('connected');
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          setConnectionStatus('disconnected');
+        }
+      });
+
+    // Subscribe to tasks changes
+    const tasksChannel = supabase
+      .channel('tasks-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'tasks'
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ['boards'] });
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus('connected');
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          setConnectionStatus('disconnected');
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(boardsChannel);
+      supabase.removeChannel(columnsChannel);
+      supabase.removeChannel(tasksChannel);
+    };
+  }, [queryClient]);
 
   const [draggedTask, setDraggedTask] = useState<{ taskId: string; sourceColumnId: string } | null>(null);
   const [touchDraggedTask, setTouchDraggedTask] = useState<{ taskId: string; sourceColumnId: string; element: HTMLElement } | null>(null);
@@ -79,32 +145,8 @@ export default function KanbanBoard() {
       });
 
       if (response.ok) {
-        // Update local state
-        setColumns((prevColumns) => {
-          const sourceColumn = prevColumns.find((col) => col.id === sourceColumnId);
-          const targetColumn = prevColumns.find((col) => col.id === targetColumnId);
-
-          if (!sourceColumn || !targetColumn) return prevColumns;
-
-          const taskToMove = sourceColumn.tasks.find((task) => task.id === taskId);
-          if (!taskToMove) return prevColumns;
-
-          return prevColumns.map((column) => {
-            if (column.id === sourceColumnId) {
-              return {
-                ...column,
-                tasks: column.tasks.filter((task) => task.id !== taskId),
-              };
-            }
-            if (column.id === targetColumnId) {
-              return {
-                ...column,
-                tasks: [...column.tasks, taskToMove],
-              };
-            }
-            return column;
-          });
-        });
+        // Invalidate queries to trigger refetch
+        queryClient.invalidateQueries({ queryKey: ['boards'] });
       }
     } catch (error) {
       console.error("Failed to move task:", error);
@@ -147,7 +189,7 @@ export default function KanbanBoard() {
     const touch = e.changedTouches[0];
     const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY);
     const columnElement = dropTarget?.closest('[data-column-id]');
-    
+
     if (columnElement) {
       const targetColumnId = columnElement.getAttribute('data-column-id');
       if (targetColumnId && targetColumnId !== sourceColumnId) {
@@ -159,31 +201,7 @@ export default function KanbanBoard() {
           });
 
           if (response.ok) {
-            setColumns((prevColumns) => {
-              const sourceColumn = prevColumns.find((col) => col.id === sourceColumnId);
-              const targetColumn = prevColumns.find((col) => col.id === targetColumnId);
-
-              if (!sourceColumn || !targetColumn) return prevColumns;
-
-              const taskToMove = sourceColumn.tasks.find((task) => task.id === taskId);
-              if (!taskToMove) return prevColumns;
-
-              return prevColumns.map((column) => {
-                if (column.id === sourceColumnId) {
-                  return {
-                    ...column,
-                    tasks: column.tasks.filter((task) => task.id !== taskId),
-                  };
-                }
-                if (column.id === targetColumnId) {
-                  return {
-                    ...column,
-                    tasks: [...column.tasks, taskToMove],
-                  };
-                }
-                return column;
-              });
-            });
+            queryClient.invalidateQueries({ queryKey: ['boards'] });
           }
         } catch (error) {
           console.error("Failed to move task:", error);
@@ -207,28 +225,24 @@ export default function KanbanBoard() {
     }
   };
 
-  const handleAddTask = async (columnId: string) => {
+  const handleAddTask = (columnId: string) => {
     if (user?.role !== "super_admin") return;
+    setSelectedColumnId(columnId);
+    setShowTaskModal(true);
+  };
 
-    const title = prompt("Enter task title:");
-    if (!title) return;
-
-    const description = prompt("Enter task description:") || "";
-    const priorityInput = prompt("Enter priority (low/medium/high):") || "medium";
-    const priority = ["low", "medium", "high"].includes(priorityInput) 
-      ? priorityInput as "low" | "medium" | "high" 
-      : "medium";
-    const dueDate = prompt("Enter due date (YYYY-MM-DD, optional):") || "";
+  const handleTaskSubmit = async (data: { title: string; description: string; priority: "low" | "medium" | "high"; dueDate: string }) => {
+    if (!selectedColumnId || !currentBoardId) return;
 
     try {
       const response = await fetch(`/api/boards/${currentBoardId}/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ columnId, title, description, priority, dueDate }),
+        body: JSON.stringify({ columnId: selectedColumnId, ...data }),
       });
 
       if (response.ok) {
-        fetchBoard(); // Refresh board data
+        queryClient.invalidateQueries({ queryKey: ['boards'] });
       }
     } catch (error) {
       console.error("Failed to add task:", error);
@@ -241,8 +255,8 @@ export default function KanbanBoard() {
 
     const description = prompt("Enter new task description:") || "";
     const priorityInput = prompt("Enter new priority (low/medium/high):") || "";
-    const priority = ["low", "medium", "high"].includes(priorityInput) 
-      ? priorityInput as "low" | "medium" | "high" 
+    const priority = ["low", "medium", "high"].includes(priorityInput)
+      ? priorityInput as "low" | "medium" | "high"
       : undefined;
 
     try {
@@ -253,7 +267,7 @@ export default function KanbanBoard() {
       });
 
       if (response.ok) {
-        fetchBoard();
+        queryClient.invalidateQueries({ queryKey: ['boards'] });
       }
     } catch (error) {
       console.error("Failed to update task:", error);
@@ -269,18 +283,19 @@ export default function KanbanBoard() {
       });
 
       if (response.ok) {
-        fetchBoard();
+        queryClient.invalidateQueries({ queryKey: ['boards'] });
       }
     } catch (error) {
       console.error("Failed to delete task:", error);
     }
   };
 
-  const handleCreateBoard = async () => {
+  const handleCreateBoard = () => {
     if (user?.role !== "super_admin") return;
-    const name = prompt("Enter board name:");
-    if (!name) return;
+    setShowBoardModal(true);
+  };
 
+  const handleBoardSubmit = async (name: string) => {
     try {
       const response = await fetch("/api/boards", {
         method: "POST",
@@ -289,17 +304,20 @@ export default function KanbanBoard() {
       });
 
       if (response.ok) {
-        fetchBoard();
+        queryClient.invalidateQueries({ queryKey: ['boards'] });
       }
     } catch (error) {
       console.error("Failed to create board:", error);
     }
   };
 
-  const handleAddColumn = async () => {
+  const handleAddColumn = () => {
     if (user?.role !== "super_admin") return;
-    const title = prompt("Enter column title:");
-    if (!title) return;
+    setShowColumnModal(true);
+  };
+
+  const handleColumnSubmit = async (title: string) => {
+    if (!currentBoardId) return;
 
     try {
       const response = await fetch(`/api/boards/${currentBoardId}/columns`, {
@@ -309,7 +327,7 @@ export default function KanbanBoard() {
       });
 
       if (response.ok) {
-        fetchBoard();
+        queryClient.invalidateQueries({ queryKey: ['boards'] });
       }
     } catch (error) {
       console.error("Failed to add column:", error);
@@ -326,7 +344,7 @@ export default function KanbanBoard() {
       });
 
       if (response.ok) {
-        fetchBoard();
+        queryClient.invalidateQueries({ queryKey: ['boards'] });
       }
     } catch (error) {
       console.error("Failed to delete column:", error);
@@ -359,13 +377,11 @@ export default function KanbanBoard() {
 
         <h3 className="text-white font-semibold mb-5 text-lg">Boards</h3>
         <div className="space-y-2 flex-1 overflow-y-auto">
-          {boards.map((b) => (
+          {boards.map((b: Board) => (
             <button
               key={b.id}
               onClick={() => {
                 setCurrentBoardId(b.id);
-                setBoard(b);
-                setColumns(b.columns);
                 setSidebarOpen(false);
               }}
               className={`w-full text-left px-5 py-4 rounded-xl transition-colors active:scale-98 ${
@@ -393,11 +409,25 @@ export default function KanbanBoard() {
       <div className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden">
         <div className="flex items-center justify-between mb-4 md:mb-6 flex-shrink-0">
           <div>
-            <h1 className="text-xl md:text-2xl font-bold text-white">
-              {board?.name || "Sprint Board"}
-            </h1>
+            <div className="flex items-center space-x-3 mb-1">
+              <h1 className="text-xl md:text-2xl font-bold text-white">
+                {currentBoard?.name || "Sprint Board"}
+              </h1>
+              <div className={`flex items-center space-x-1.5 text-xs ${
+                connectionStatus === 'connected' ? 'text-green-400' :
+                connectionStatus === 'connecting' ? 'text-yellow-400' :
+                'text-red-400'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${
+                  connectionStatus === 'connected' ? 'bg-green-400 animate-pulse' :
+                  connectionStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' :
+                  'bg-red-400'
+                }`}></span>
+                <span className="hidden sm:inline">{connectionStatus}</span>
+              </div>
+            </div>
             <p className="text-blue-300 text-sm">
-              {columns.length} columns · {columns.reduce((acc, col) => acc + col.tasks.length, 0)} tasks
+              {columns.length} columns · {columns.reduce((acc: number, col: Column) => acc + col.tasks.length, 0)} tasks
             </p>
           </div>
           <div className="flex items-center space-x-3">
@@ -422,14 +452,21 @@ export default function KanbanBoard() {
 
         <div className="flex-1 overflow-x-auto overflow-y-hidden -mx-4 px-4 md:-mx-6 md:px-6">
           <div className="flex space-x-4 md:space-x-6 min-w-full h-full pb-2">
-        {columns.map((column) => (
-          <div
-            key={column.id}
-            data-column-id={column.id}
-            className="bg-black/30 backdrop-blur-lg rounded-xl p-5 md:p-6 min-h-[400px] md:min-h-[500px] border border-blue-500/30 shadow-lg w-80 flex-shrink-0 flex flex-col"
-            onDragOver={handleDragOver}
-            onDrop={() => handleDrop(column.id)}
-          >
+        {isLoading ? (
+          <>
+            <BoardSkeleton />
+            <BoardSkeleton />
+            <BoardSkeleton />
+          </>
+        ) : (
+          columns.map((column: Column) => (
+            <div
+              key={column.id}
+              data-column-id={column.id}
+              className="bg-black/30 backdrop-blur-lg rounded-xl p-5 md:p-6 min-h-[400px] md:min-h-[500px] border border-blue-500/30 shadow-lg w-80 flex-shrink-0 flex flex-col"
+              onDragOver={handleDragOver}
+              onDrop={() => handleDrop(column.id)}
+            >
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg md:text-xl font-semibold text-white">
                 {column.title}
@@ -463,7 +500,7 @@ export default function KanbanBoard() {
                   Drop tasks here
                 </div>
               )}
-              {column.tasks.map((task) => (
+              {column.tasks.map((task: Task) => (
                 <div
                   key={task.id}
                   draggable
@@ -513,10 +550,28 @@ export default function KanbanBoard() {
               ))}
             </div>
           </div>
-        ))}
+        ))
+        )}
+      </div>
       </div>
     </div>
+
+    {/* Modals */}
+    <BoardModal
+      isOpen={showBoardModal}
+      onClose={() => setShowBoardModal(false)}
+      onSubmit={handleBoardSubmit}
+    />
+    <ColumnModal
+      isOpen={showColumnModal}
+      onClose={() => setShowColumnModal(false)}
+      onSubmit={handleColumnSubmit}
+    />
+    <TaskModal
+      isOpen={showTaskModal}
+      onClose={() => setShowTaskModal(false)}
+      onSubmit={handleTaskSubmit}
+    />
   </div>
-</div>
   );
 }

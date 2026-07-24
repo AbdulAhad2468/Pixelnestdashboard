@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
+import BoardModal from "./BoardModal";
 
 interface Board {
   id: string;
@@ -25,9 +28,7 @@ interface User {
 
 export default function AdminPanel() {
   const { user, logout, refreshUser } = useAuth();
-  const [boards, setBoards] = useState<Board[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [newBoardName, setNewBoardName] = useState("");
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"boards" | "users">("boards");
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [newColumnName, setNewColumnName] = useState("");
@@ -42,56 +43,91 @@ export default function AdminPanel() {
   const [newUserPassword, setNewUserPassword] = useState("");
   const [createUserError, setCreateUserError] = useState("");
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [showBoardModal, setShowBoardModal] = useState(false);
 
-  // Fetch boards
-  const fetchBoards = async () => {
-    try {
+  // Fetch boards with React Query
+  const { data: boards = [] } = useQuery({
+    queryKey: ['admin-boards'],
+    queryFn: async () => {
       const response = await fetch("/api/boards");
-      if (response.ok) {
-        const data = await response.json();
-        setBoards(data);
-      }
-    } catch (error) {
-      console.error("Failed to fetch boards:", error);
-    }
-  };
+      if (!response.ok) throw new Error("Failed to fetch boards");
+      return response.json();
+    },
+    staleTime: 0, // Always fresh for real-time
+    refetchInterval: 30000, // Refetch every 30 seconds as fallback
+  });
 
-  // Fetch users
-  const fetchUsers = async () => {
-    try {
+  // Fetch users with React Query
+  const { data: users = [] } = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: async () => {
       const response = await fetch("/api/users");
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Fetched users:", data);
-        setUsers(data);
-      } else {
-        console.error("Failed to fetch users, status:", response.status);
-      }
-    } catch (error) {
-      console.error("Failed to fetch users:", error);
-    }
+      if (!response.ok) throw new Error("Failed to fetch users");
+      return response.json();
+    },
+    staleTime: 0, // Always fresh for real-time
+    refetchInterval: 30000, // Refetch every 30 seconds as fallback
+  });
+
+  // Set up real-time subscriptions
+  useEffect(() => {
+    // Subscribe to boards changes
+    const boardsChannel = supabase
+      .channel('admin-boards-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'boards'
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ['admin-boards'] });
+      })
+      .subscribe();
+
+    // Subscribe to columns changes
+    const columnsChannel = supabase
+      .channel('admin-columns-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'columns'
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ['admin-boards'] });
+      })
+      .subscribe();
+
+    // Subscribe to users changes
+    const usersChannel = supabase
+      .channel('admin-users-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'profiles'
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(boardsChannel);
+      supabase.removeChannel(columnsChannel);
+      supabase.removeChannel(usersChannel);
+    };
+  }, [queryClient]);
+
+  const handleCreateBoard = () => {
+    setShowBoardModal(true);
   };
 
-  useEffect(() => {
-    console.log("AdminPanel mounted, fetching data...");
-    fetchBoards();
-    fetchUsers();
-  }, []);
-
-  const handleCreateBoard = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newBoardName.trim()) return;
-
+  const handleBoardSubmit = async (name: string) => {
     try {
       const response = await fetch("/api/boards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newBoardName }),
+        body: JSON.stringify({ name }),
       });
 
       if (response.ok) {
-        setNewBoardName("");
-        fetchBoards();
+        queryClient.invalidateQueries({ queryKey: ['admin-boards'] });
       }
     } catch (error) {
       console.error("Failed to create board:", error);
@@ -105,7 +141,7 @@ export default function AdminPanel() {
       });
 
       if (response.ok) {
-        fetchBoards();
+        queryClient.invalidateQueries({ queryKey: ['admin-boards'] });
         if (selectedBoard?.id === id) {
           setSelectedBoard(null);
         }
@@ -128,7 +164,7 @@ export default function AdminPanel() {
 
       if (response.ok) {
         setNewColumnName("");
-        fetchBoards();
+        queryClient.invalidateQueries({ queryKey: ['admin-boards'] });
       }
     } catch (error) {
       console.error("Failed to add column:", error);
@@ -147,7 +183,7 @@ export default function AdminPanel() {
 
       if (response.ok) {
         setEditingColumn(null);
-        fetchBoards();
+        queryClient.invalidateQueries({ queryKey: ['admin-boards'] });
       }
     } catch (error) {
       console.error("Failed to edit column:", error);
@@ -163,7 +199,7 @@ export default function AdminPanel() {
       });
 
       if (response.ok) {
-        fetchBoards();
+        queryClient.invalidateQueries({ queryKey: ['admin-boards'] });
       }
     } catch (error) {
       console.error("Failed to delete column:", error);
@@ -182,7 +218,7 @@ export default function AdminPanel() {
 
       if (response.ok) {
         setEditingUser(null);
-        fetchUsers();
+        queryClient.invalidateQueries({ queryKey: ['admin-users'] });
         // Refresh current user if they were edited
         if (userId === user?.id) {
           refreshUser();
@@ -212,10 +248,7 @@ export default function AdminPanel() {
       });
 
       if (response.ok) {
-        // Remove user from local state immediately
-        setUsers(users.filter(u => u.id !== userId));
-        // Then fetch fresh data from server
-        await fetchUsers();
+        queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       } else {
         const errorData = await response.json();
         alert(errorData.error || "Failed to delete user");
@@ -254,7 +287,7 @@ export default function AdminPanel() {
         setNewUserRole("member");
         setShowCreateUser(false);
         console.log("User created successfully, fetching users...");
-        fetchUsers();
+        queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       } else {
         console.error("Create user failed:", responseData);
         setCreateUserError(responseData.error || "Failed to create user");
@@ -308,24 +341,15 @@ export default function AdminPanel() {
 
       {activeTab === "boards" && (
         <div>
-          <form onSubmit={handleCreateBoard} className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-4 md:mb-6">
-            <input
-              type="text"
-              value={newBoardName}
-              onChange={(e) => setNewBoardName(e.target.value)}
-              placeholder="New board name"
-              className="flex-1 bg-black/50 border border-blue-500/50 rounded-lg px-3 md:px-4 py-2 text-white placeholder-blue-300/50 focus:outline-none focus:border-blue-400 text-sm md:text-base"
-            />
-            <button
-              type="submit"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-4 py-2 rounded-lg transition-colors text-sm md:text-base"
-            >
-              Create Board
-            </button>
-          </form>
+          <button
+            onClick={handleCreateBoard}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm md:text-base mb-4 md:mb-6"
+          >
+            + Create Board
+          </button>
 
           <div className="space-y-4">
-            {boards.map((board) => (
+            {boards.map((board: Board) => (
               <div
                 key={board.id}
                 className="bg-black/50 border border-blue-500/30 rounded-lg p-4"
@@ -367,7 +391,7 @@ export default function AdminPanel() {
                       </button>
                     </form>
 
-                    {board.columns.map((column) => (
+                    {board.columns.map((column: Column) => (
                       <div
                         key={column.id}
                         className="flex flex-col sm:flex-row sm:items-center justify-between bg-black/30 border border-blue-500/20 rounded-lg px-3 py-2 gap-2"
@@ -483,7 +507,7 @@ export default function AdminPanel() {
           )}
 
           <div className="space-y-3">
-            {users.map((userItem) => (
+            {users.map((userItem: User) => (
               <div
                 key={userItem.id}
                 className="bg-black/50 border border-blue-500/30 rounded-lg p-3 md:p-4"
@@ -494,8 +518,8 @@ export default function AdminPanel() {
                       <label className="text-blue-300 text-sm block mb-1">Name</label>
                       <input
                         type="text"
-                        value={editingUser.name}
-                        onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
+                        value={editingUser?.name || ""}
+                        onChange={(e) => editingUser && setEditingUser({ ...editingUser, name: e.target.value })}
                         className="w-full bg-black/30 border border-blue-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-400 text-sm"
                       />
                     </div>
@@ -503,16 +527,16 @@ export default function AdminPanel() {
                       <label className="text-blue-300 text-sm block mb-1">Email</label>
                       <input
                         type="email"
-                        value={editingUser.email}
-                        onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                        value={editingUser?.email || ""}
+                        onChange={(e) => editingUser && setEditingUser({ ...editingUser, email: e.target.value })}
                         className="w-full bg-black/30 border border-blue-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-400 text-sm"
                       />
                     </div>
                     <div>
                       <label className="text-blue-300 text-sm block mb-1">Role</label>
                       <select
-                        value={editingUser.role}
-                        onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as "super_admin" | "member" })}
+                        value={editingUser?.role || "member"}
+                        onChange={(e) => editingUser && setEditingUser({ ...editingUser, role: e.target.value as "super_admin" | "member" })}
                         className="w-full bg-black/30 border border-blue-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-400 text-sm"
                       >
                         <option value="member">Member</option>
@@ -584,6 +608,12 @@ export default function AdminPanel() {
           </div>
         </div>
       )}
+
+      <BoardModal
+        isOpen={showBoardModal}
+        onClose={() => setShowBoardModal(false)}
+        onSubmit={handleBoardSubmit}
+      />
     </div>
   );
 }

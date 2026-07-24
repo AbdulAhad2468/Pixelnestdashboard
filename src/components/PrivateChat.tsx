@@ -36,6 +36,7 @@ export default function PrivateChat() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting');
   const usersRef = useRef<User[]>([]);
 
   // Fetch users and all messages
@@ -93,7 +94,13 @@ export default function PrivateChat() {
       }, () => {
         fetchAllMessages();
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus('connected');
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          setConnectionStatus('disconnected');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -136,8 +143,6 @@ export default function PrivateChat() {
     };
 
     fetchMessages();
-    const interval = setInterval(fetchMessages, 3000);
-    return () => clearInterval(interval);
   }, [user, selectedUser]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -365,20 +370,34 @@ export default function PrivateChat() {
         {selectedUser ? (
           <>
             <div className="p-3 md:p-4 border-b border-blue-500/30 bg-black/50 flex-shrink-0">
-              <div className="flex items-center space-x-3">
-                <div className="relative">
-                  <div className="w-10 h-10 md:w-10 md:h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white text-sm md:text-sm font-semibold">
-                    {selectedUser.name[0]}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="relative">
+                    <div className="w-10 h-10 md:w-10 md:h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white text-sm md:text-sm font-semibold">
+                      {selectedUser.name[0]}
+                    </div>
+                    {onlineUsers.has(selectedUser.id) && (
+                      <div className="absolute bottom-0 right-0 w-3 h-3 md:w-3 md:h-3 bg-green-500 rounded-full border-2 border-black/50"></div>
+                    )}
                   </div>
-                  {onlineUsers.has(selectedUser.id) && (
-                    <div className="absolute bottom-0 right-0 w-3 h-3 md:w-3 md:h-3 bg-green-500 rounded-full border-2 border-black/50"></div>
-                  )}
+                  <div>
+                    <h2 className="text-white font-semibold text-base md:text-base">{selectedUser.name}</h2>
+                    <div className="text-xs md:text-xs text-blue-300">
+                      {onlineUsers.has(selectedUser.id) ? 'Active now' : 'Offline'}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-white font-semibold text-base md:text-base">{selectedUser.name}</h2>
-                  <div className="text-xs md:text-xs text-blue-300">
-                    {onlineUsers.has(selectedUser.id) ? 'Active now' : 'Offline'}
-                  </div>
+                <div className={`flex items-center space-x-1.5 text-xs ${
+                  connectionStatus === 'connected' ? 'text-green-400' :
+                  connectionStatus === 'connecting' ? 'text-yellow-400' :
+                  'text-red-400'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${
+                    connectionStatus === 'connected' ? 'bg-green-400 animate-pulse' :
+                    connectionStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' :
+                    'bg-red-400'
+                  }`}></span>
+                  <span className="hidden sm:inline">{connectionStatus}</span>
                 </div>
               </div>
             </div>
